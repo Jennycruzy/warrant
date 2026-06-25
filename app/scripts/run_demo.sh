@@ -10,8 +10,9 @@
 # expected outcome aborts the script with a non-zero exit.
 #
 # Prerequisites (produced by the circuit setup / contract build):
-#   app/build/mandate_js/mandate.wasm, app/build/mandate_final.zkey,
-#   app/build/mandate_vk.hex, app/target/wasm32v1-none/release/warrant.wasm
+#   app/build/mandate_allow_js/mandate_allow.wasm,
+#   app/build/mandate_allow_final.zkey, app/build/mandate_allow_vk.hex,
+#   app/target/wasm32v1-none/release/warrant.wasm
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,14 +24,15 @@ export STELLAR_NETWORK="${STELLAR_NETWORK:-testnet}"
 B=app/build
 ENC=CircomStellar/target/debug/circom-to-soroban-hex
 WASM=app/target/wasm32v1-none/release/warrant.wasm
-ZKEY=$B/mandate_final.zkey
-CWASM=$B/mandate_js/mandate.wasm
-VK_HEX="$(tr -d '\r\n' < $B/mandate_vk.hex)"
+ZKEY=$B/mandate_allow_final.zkey
+CWASM=$B/mandate_allow_js/mandate_allow.wasm
+VK_HEX="$(tr -d '\r\n' < $B/mandate_allow_vk.hex)"
 EXPLORER="https://stellar.expert/explorer/testnet/tx"
 
 AMOUNT1=500000000   # 50 XLM
 AMOUNT2=300000000   # 30 XLM
 RECIP=0
+DENIED_RECIP=7
 
 ADMIN="$(stellar keys address warrant-admin)"
 TOKEN="$(cat $B/native_sac.txt)"
@@ -45,8 +47,8 @@ hex2dec() { node -e 'process.stdout.write(BigInt("0x"+process.argv[1]).toString(
 # prove <bookFile> <amount> <recip> <prefix> : write <prefix>_proof.hex/_public.hex, echo meta json
 prove() {
   local book="$1" amt="$2" rcp="$3" pfx="$4"
-  node app/scripts/book_input.js "$book" "$amt" "$rcp" "$pfx.input.json" >/dev/null
-  node "$B/mandate_js/generate_witness.js" "$CWASM" "$pfx.input.json" "$pfx.wtns" >/dev/null
+  node app/scripts/book_input_allow.js "$book" "$rcp" "$amt" "$pfx.input.json" >/dev/null
+  node "$B/mandate_allow_js/generate_witness.js" "$CWASM" "$pfx.input.json" "$pfx.wtns" >/dev/null
   snarkjs groth16 prove "$ZKEY" "$pfx.wtns" "$pfx.proof.json" "$pfx.public.json" >/dev/null 2>&1
   $ENC proof  "$pfx.proof.json"  > "$pfx.proof.hex"
   $ENC public "$pfx.public.json" > "$pfx.public.hex"
@@ -112,12 +114,21 @@ echo "OK: settle2 moved $AMOUNT2, root chained root1->root2"
 
 note "VIOLATING action — amount 2000000000 > maxPerTx — expect NO witness/proof"
 rm -f "$B/dviol.wtns"
-node app/scripts/book_input.js "$B/book.json" 2000000000 "$RECIP" "$B/dviol.input.json" >/dev/null
-if node "$B/mandate_js/generate_witness.js" "$CWASM" "$B/dviol.input.json" "$B/dviol.wtns" >/dev/null 2>&1; then
+node app/scripts/book_input_allow.js "$B/book.json" "$RECIP" 2000000000 "$B/dviol.input.json" >/dev/null
+if node "$B/mandate_allow_js/generate_witness.js" "$CWASM" "$B/dviol.input.json" "$B/dviol.wtns" >/dev/null 2>&1; then
   fail "violating witness was produced — circuit did not enforce the limit"
 fi
 [ ! -f "$B/dviol.wtns" ] || fail "violating witness file exists"
 echo "OK: witness generation rejected the over-limit amount; no proof can exist"
+
+note "DENIED RECIPIENT — recipient not in private allowlist — expect NO witness/proof"
+rm -f "$B/denied.wtns"
+node app/scripts/book_input_allow.js "$B/book.json" "$DENIED_RECIP" 100000000 "$B/denied.input.json" >/dev/null
+if node "$B/mandate_allow_js/generate_witness.js" "$CWASM" "$B/denied.input.json" "$B/denied.wtns" >/dev/null 2>&1; then
+  fail "denied recipient witness was produced — circuit did not enforce allowlist membership"
+fi
+[ ! -f "$B/denied.wtns" ] || fail "denied recipient witness file exists"
+echo "OK: witness generation rejected a recipient outside the committed allowlist"
 
 note "FORGED proof — well-formed proof bytes that do NOT prove this statement — expect revert"
 C3a="$(bal "$CID")"

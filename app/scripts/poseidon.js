@@ -1,23 +1,33 @@
-// Field-consistent Poseidon(3) over BLS12-381, computed with the SAME compiled
-// circuit (poseidon3.wasm) the mandate circuit uses. This guarantees the values
-// the prover supplies as public inputs (policyCommitment, state roots) match what
-// the circuit recomputes and constrains — no separate JS hash library is trusted.
+// Field-consistent Poseidon over BLS12-381, computed with the SAME compiled
+// circuits the mandate circuit uses (poseidon2/3/4.wasm). This guarantees every
+// value the prover derives off-chain (commitment, state roots, Merkle nodes)
+// matches what the circuit recomputes and constrains — no separate JS hash
+// library is trusted.
 const fs = require("fs");
 const path = require("path");
 
-const WASM = path.join(__dirname, "..", "build", "poseidon3_js", "poseidon3.wasm");
-const builder = require(path.join(__dirname, "..", "build", "poseidon3_js", "witness_calculator.js"));
+const cache = {};
 
-// Compute Poseidon([a, b, c]) and return the result as a decimal string.
-async function poseidon3(a, b, c) {
-  const wc = await builder(fs.readFileSync(WASM));
-  // calculateWitness returns the full witness vector as bigints;
-  // index 0 is the constant 1, index 1 is the circuit's single output.
-  const witness = await wc.calculateWitness(
-    { in: [String(a), String(b), String(c)] },
+async function poseidon(arity, inputs) {
+  if (inputs.length !== arity) {
+    throw new Error(`poseidon(${arity}) expects ${arity} inputs, got ${inputs.length}`);
+  }
+  if (!cache[arity]) {
+    const dir = path.join(__dirname, "..", "build", `poseidon${arity}_js`);
+    const wasm = path.join(dir, `poseidon${arity}.wasm`);
+    const builder = require(path.join(dir, "witness_calculator.js"));
+    cache[arity] = await builder(fs.readFileSync(wasm));
+  }
+  const witness = await cache[arity].calculateWitness(
+    { in: inputs.map((x) => String(x)) },
     true
   );
+  // index 0 is the constant 1, index 1 is the circuit's single output.
   return witness[1].toString();
 }
 
-module.exports = { poseidon3 };
+const poseidon2 = (a, b) => poseidon(2, [a, b]);
+const poseidon3 = (a, b, c) => poseidon(3, [a, b, c]);
+const poseidon4 = (a, b, c, d) => poseidon(4, [a, b, c, d]);
+
+module.exports = { poseidon, poseidon2, poseidon3, poseidon4 };
