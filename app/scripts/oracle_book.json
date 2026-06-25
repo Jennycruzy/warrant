@@ -1,0 +1,15 @@
+{
+  "mandate": {
+    "maxPerTx": "100",
+    "maxPosition": "1000",
+    "drawdownLimit": "100"
+  },
+  "book": {
+    "position": "100",
+    "peakEquity": "1000"
+  },
+  "allowlist": {
+    "depth": 3,
+    "leaves": ["0"]
+  }
+}
