@@ -1,0 +1,22 @@
+{
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "contractId": "CDSSA4TBHTNUSDKL7SQBJKSFCI53BQSK7HPHU5RIQEDQZM3XVF6KJ57Q",
+  "token": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "recipient": "GCRZ4UD7D73V7TKIOKMQGRQPDACC7LYSKSNRXMQSMXQOZ5D277OX4GVC",
+  "oraclePubKey": "eaee897380a52a6b18205c33d79ed68e26f23ab85f46a9f74e044a989411af0b",
+  "signatureHex": "9ad495a06680cc8b1fc16981dfeba9a1d4acc87f972ce5b135589c7feeb03aaf31d60c600f85a82e754e1780be689968b07c7cbaac43d035cb3beb2000821200",
+  "messageHex": "000000000000000a000000006b49d200",
+  "commitmentHex": "2e3da43f5d59ed1757ae427481b609988aca187b7075f43733225a7590893a87",
+  "genesisRootHex": "45be8d721eb60367b8485489cb4668c6690bc8571750ade6ba195e97cba264f1",
+  "price": "10",
+  "timestamp": "1800000000",
+  "mandate": {
+    "maxPerTx": "100",
+    "maxPosition": "1000",
+    "drawdownLimit": "100"
+  },
+  "book": {
+    "position": "100",
+    "peakEquity": "1000"
+  }
+}
