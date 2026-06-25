@@ -1,0 +1,12 @@
+{
+  "mandate": {
+    "maxPerTx": "1000000000",
+    "maxPosition": "5000000000",
+    "drawdownLimit": "2000000000"
+  },
+  "book": {
+    "position": "0",
+    "peakEquity": "10000000000",
+    "currentEquity": "9500000000"
+  }
+}
