@@ -35,6 +35,8 @@ pub enum Error {
     RecipientNotRegistered = 11,
     AmountOutOfRange = 12,
     RecipientIdOutOfRange = 13,
+    OracleKeyNotSet = 14,
+    PriceMismatch = 15,
 }
 
 #[contracttype]
@@ -46,10 +48,11 @@ pub enum DataKey {
     PolicyCommitment,
     StateRoot,
     Recipient(u32),
+    OraclePubKey,
 }
 
-// Number of public signals the mandate circuit exposes.
-const N_PUBLIC: u32 = 5;
+const N_PUBLIC_MANDATE: u32 = 5;
+const N_PUBLIC_ORACLE: u32 = 6;
 
 // ---------------------------------------------------------------------------
 // Groth16 verification primitives (BLS12-381). Layout matches the reference
@@ -101,7 +104,13 @@ impl VerificationKey {
         if pos != bytes.len() || ic_len == 0 {
             return Err(e);
         }
-        Ok(Self { alpha, beta, gamma, delta, ic })
+        Ok(Self {
+            alpha,
+            beta,
+            gamma,
+            delta,
+            ic,
+        })
     }
 }
 
@@ -136,7 +145,12 @@ fn public_signals(env: &Env, bytes: &Bytes) -> Result<Vec<Fr>, Error> {
     Ok(signals)
 }
 
-fn verify_proof(env: &Env, vk: VerificationKey, proof: Proof, signals: Vec<Fr>) -> Result<bool, Error> {
+fn verify_proof(
+    env: &Env,
+    vk: VerificationKey,
+    proof: Proof,
+    signals: Vec<Fr>,
+) -> Result<bool, Error> {
     if signals.len() + 1 != vk.ic.len() {
         return Err(Error::MalformedVerifyingKey);
     }
@@ -193,6 +207,26 @@ fn signal_to_u32(arr: &[u8; 32]) -> Result<u32, Error> {
     Ok(u32::from_be_bytes(b))
 }
 
+fn signal_to_u64(arr: &[u8; 32]) -> Result<u64, Error> {
+    if arr[0..24] != [0u8; 24] {
+        return Err(Error::AmountOutOfRange);
+    }
+    let mut b = [0u8; 8];
+    b.copy_from_slice(&arr[24..32]);
+    Ok(u64::from_be_bytes(b))
+}
+
+fn price_message(env: &Env, price: u64, timestamp: u64) -> Bytes {
+    let mut msg = Bytes::new(env);
+    for b in price.to_be_bytes() {
+        msg.push_back(b);
+    }
+    for b in timestamp.to_be_bytes() {
+        msg.push_back(b);
+    }
+    msg
+}
+
 #[contract]
 pub struct Warrant;
 
@@ -235,6 +269,15 @@ impl Warrant {
         Ok(())
     }
 
+    /// Store the oracle Ed25519 public key. Admin only.
+    pub fn set_oracle(env: Env, public_key: BytesN<32>) -> Result<(), Error> {
+        Self::admin(&env)?.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::OraclePubKey, &public_key);
+        Ok(())
+    }
+
     /// Move `amount` of the token from `from` into the contract's custody.
     pub fn fund(env: Env, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
@@ -255,13 +298,54 @@ impl Warrant {
     /// On success it advances the state root to nextStateRoot and transfers
     /// `amount` of the token to the registered recipient.
     pub fn settle(env: Env, proof_bytes: Bytes, pub_signals_bytes: Bytes) -> Result<(), Error> {
+        Self::settle_checked(env, proof_bytes, pub_signals_bytes, N_PUBLIC_MANDATE, None)
+    }
+
+    /// Release funds for an oracle-marked settlement. The contract authenticates
+    /// `price,timestamp` under the stored oracle key and requires `price` to be
+    /// the exact sixth public signal verified by the Groth16 proof.
+    pub fn settle_with_price(
+        env: Env,
+        proof_bytes: Bytes,
+        pub_signals_bytes: Bytes,
+        price: u64,
+        timestamp: u64,
+        signature: BytesN<64>,
+    ) -> Result<(), Error> {
+        let oracle_key: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::OraclePubKey)
+            .ok_or(Error::OracleKeyNotSet)?;
+        let msg = price_message(&env, price, timestamp);
+        env.crypto().ed25519_verify(&oracle_key, &msg, &signature);
+        Self::settle_checked(
+            env,
+            proof_bytes,
+            pub_signals_bytes,
+            N_PUBLIC_ORACLE,
+            Some(price),
+        )
+    }
+
+    fn settle_checked(
+        env: Env,
+        proof_bytes: Bytes,
+        pub_signals_bytes: Bytes,
+        expected_public_count: u32,
+        expected_price: Option<u64>,
+    ) -> Result<(), Error> {
         // Must be initialized.
         let _admin = Self::admin(&env)?;
 
         // (1) well-formed public signals.
         let mut pos = 0u32;
-        let count = u32::from_be_bytes(take::<4>(&pub_signals_bytes, &mut pos, Error::MalformedPublicSignals)?);
-        if count != N_PUBLIC {
+        let count = u32::from_be_bytes(take::<4>(
+            &pub_signals_bytes,
+            &mut pos,
+            Error::MalformedPublicSignals,
+        )?);
+        if count != expected_public_count {
             return Err(Error::WrongPublicSignalCount);
         }
 
@@ -271,6 +355,11 @@ impl Warrant {
         let next_root = signal_array(&pub_signals_bytes, 2)?;
         let amount = signal_to_i128(&signal_array(&pub_signals_bytes, 3)?)?;
         let recipient_id = signal_to_u32(&signal_array(&pub_signals_bytes, 4)?)?;
+        if let Some(price) = expected_price {
+            if signal_to_u64(&signal_array(&pub_signals_bytes, 5)?)? != price {
+                return Err(Error::PriceMismatch);
+            }
+        }
 
         // (2) commitment must match.
         let stored_policy: BytesN<32> = env
@@ -330,11 +419,17 @@ impl Warrant {
     // ---- read-only getters for the UI ----
 
     pub fn current_state_root(env: Env) -> Result<BytesN<32>, Error> {
-        env.storage().instance().get(&DataKey::StateRoot).ok_or(Error::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::StateRoot)
+            .ok_or(Error::NotInitialized)
     }
 
     pub fn policy_commitment(env: Env) -> Result<BytesN<32>, Error> {
-        env.storage().instance().get(&DataKey::PolicyCommitment).ok_or(Error::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::PolicyCommitment)
+            .ok_or(Error::NotInitialized)
     }
 
     pub fn get_token(env: Env) -> Result<Address, Error> {
@@ -342,16 +437,25 @@ impl Warrant {
     }
 
     pub fn recipient(env: Env, id: u32) -> Result<Address, Error> {
-        env.storage().instance().get(&DataKey::Recipient(id)).ok_or(Error::RecipientNotRegistered)
+        env.storage()
+            .instance()
+            .get(&DataKey::Recipient(id))
+            .ok_or(Error::RecipientNotRegistered)
     }
 
     // ---- internal helpers ----
 
     fn admin(env: &Env) -> Result<Address, Error> {
-        env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
     }
 
     fn token(env: &Env) -> Result<Address, Error> {
-        env.storage().instance().get(&DataKey::Token).ok_or(Error::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(Error::NotInitialized)
     }
 }
