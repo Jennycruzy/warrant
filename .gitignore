@@ -1,0 +1,25 @@
+# Vendored external clones (not our code)
+circom/
+CircomStellar/
+
+# Node
+node_modules/
+package-lock.json
+
+# Rust build output
+target/
+**/target/
+
+# Circuit / proving build artifacts (regenerable)
+app/build/
+app/ptau/
+*.ptau
+*.zkey
+*.wtns
+*.r1cs
+*.sym
+*.wasm
+
+# Editor / OS
+.DS_Store
+*.swp
