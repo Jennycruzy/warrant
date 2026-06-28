@@ -20,6 +20,11 @@ app/ptau/
 *.sym
 *.wasm
 
+# SDK toolkit local outputs (generated keypairs / per-run config)
+.keys.json
+.keys*.json
+demo-config.*.json
+
 # Editor / OS
 .DS_Store
 *.swp
