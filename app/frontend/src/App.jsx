@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as snarkjs from "snarkjs";
-import { flipLastByte, proofToHex, publicSignalsToHex } from "./lib/snarkHex.js";
-import { DEFAULT_NETWORK, DEFAULT_RPC, readContractState, settle, settleWithPrice } from "./lib/stellarWarrant.js";
+import { proofToHex, publicSignalsToHex } from "./lib/snarkHex.js";
+import { DEFAULT_NETWORK, DEFAULT_RPC, readContractState, settleWithFootprint, settleWithPrice } from "./lib/stellarWarrant.js";
 
 const explorer = "https://stellar.expert/explorer/testnet/tx/";
 const sourceSecret = import.meta.env.VITE_SOURCE_SECRET || "";
@@ -34,6 +34,7 @@ export default function App() {
   const [proofHex, setProofHex] = useState("");
   const [publicHex, setPublicHex] = useState("");
   const [lastProof, setLastProof] = useState(null);
+  const [footprint, setFootprint] = useState(null);
   const [feed, setFeed] = useState([]);
 
   const network = DEFAULT_NETWORK;
@@ -108,8 +109,9 @@ export default function App() {
       });
       setStatus("settled");
       setLastProof(result);
+      setFootprint(sent.footprint);
       appendFeed({ kind: "settled", text: "Compliant settlement paid", hash: sent.hash });
-      setMessage("Settled on-chain. State root advanced.");
+      setMessage("Settled on-chain. State root advanced. Forged and replay attempts now land as real reverted txs.");
       setChain(await readContractState({ rpcUrl, contractId: config.contractId }));
     } catch (err) {
       const neverReached = selectedScenario !== "valid";
@@ -124,59 +126,74 @@ export default function App() {
     }
   }
 
-  async function onForged() {
+  function requireAnchor() {
+    if (footprint && lastProof) return true;
+    setMessage("Run a compliant settlement first — the adversarial attempts reuse its on-chain footprint to land as real reverted txs.");
+    return false;
+  }
+
+  // Force-submit a deliberately invalid settlement so the contract reverts on-chain.
+  async function submitAdversarial({ kind, proofHex, publicHex, expected, describe }) {
     setBusy(true);
+    setStatus("submitting");
     try {
-      const proof = lastProof || (await proveScenario("valid"));
-      setStatus("submitting");
-      await settleWithPrice({
+      const res = await settleWithFootprint({
         rpcUrl,
         networkPassphrase: network,
         sourceSecret,
         contractId: config.contractId,
-        proofHex: flipLastByte(proof.proofHex),
-        publicHex: proof.publicHex,
+        proofHex,
+        publicHex,
         price: config.price,
         timestamp: config.timestamp,
         signatureHex: config.signatureHex,
+        footprint,
       });
-      throw new Error("forged proof unexpectedly landed");
+      if (res.status === "FAILED") {
+        setStatus("rejected");
+        appendFeed({ kind: "rejected", text: `${describe} reverted on-chain (${res.reason.name || `#${res.reason.code}`})`, hash: res.hash });
+        setMessage(`Contract reverted the ${kind} on-chain: ${res.reason.name || "rejected"} (#${res.reason.code ?? "?"}). This is a real, committed testnet transaction — open the explorer link.`);
+      } else {
+        setStatus(res.status === "SUCCESS" ? "settled" : "rejected");
+        appendFeed({ kind: res.status === "SUCCESS" ? "settled" : "rejected", text: `${describe}: unexpected ${res.status}`, hash: res.hash });
+        setMessage(`Unexpected: the ${kind} resolved as ${res.status} (expected revert ${expected}).`);
+      }
     } catch (err) {
       setStatus("rejected");
-      appendFeed({ kind: "rejected", text: "Forged proof rejected on-chain" });
-      setMessage(`Contract rejected forged proof: ${err.message || String(err)}`);
+      setMessage(`${describe} submission error: ${err.message || String(err)}`);
     } finally {
       setBusy(false);
     }
   }
 
-  async function onReplay() {
-    if (!lastProof) {
-      setMessage("Run a compliant settlement first; replay needs the previous proof.");
-      return;
-    }
-    setBusy(true);
-    try {
-      setStatus("submitting");
-      await settleWithPrice({
-        rpcUrl,
-        networkPassphrase: network,
-        sourceSecret,
-        contractId: config.contractId,
-        proofHex: lastProof.proofHex,
-        publicHex: lastProof.publicHex,
-        price: config.price,
-        timestamp: config.timestamp,
-        signatureHex: config.signatureHex,
-      });
-      throw new Error("replay unexpectedly landed");
-    } catch (err) {
-      setStatus("rejected");
-      appendFeed({ kind: "rejected", text: "Replay rejected on-chain" });
-      setMessage(`Replay rejected: ${err.message || String(err)}`);
-    } finally {
-      setBusy(false);
-    }
+  // Present the real proof but lie about which state it extends: claim prevStateRoot =
+  // current on-chain root (so the staleness check passes) while the proof actually
+  // attests genesis -> next. The pairing then fails => contract reverts ProofInvalid.
+  function onForged() {
+    if (!requireAnchor()) return;
+    const forgedSignals = [...lastProof.publicSignals];
+    forgedSignals[1] = lastProof.publicSignals[2];
+    forgedSignals[2] = "12345";
+    return submitAdversarial({
+      kind: "forged proof",
+      describe: "Forged proof",
+      expected: "ProofInvalid #10",
+      proofHex: lastProof.proofHex,
+      publicHex: publicSignalsToHex(forgedSignals),
+    });
+  }
+
+  // Resubmit the previous compliant proof. Its prevStateRoot is the old root, but the
+  // root has already advanced => contract reverts StaleStateRoot.
+  function onReplay() {
+    if (!requireAnchor()) return;
+    return submitAdversarial({
+      kind: "replayed proof",
+      describe: "Replay",
+      expected: "StaleStateRoot #9",
+      proofHex: lastProof.proofHex,
+      publicHex: lastProof.publicHex,
+    });
   }
 
   async function onRemark() {
@@ -284,7 +301,12 @@ export default function App() {
       </section>
 
       <footer>
-        No mocks: proofs are generated with snarkjs in this browser, contract calls use Stellar testnet, and every chain result comes from the live contract.
+        <p>
+          No mocks: proofs are generated with snarkjs in this browser; compliant settlements pay on Stellar
+          testnet, and forged or replayed proofs are submitted and <strong>revert on-chain</strong> with real explorer links.
+        </p>
+        <p className="verify">Don't trust this UI — verify the live contract directly (no keys needed):</p>
+        <code>stellar contract invoke --id {config?.contractId || "<contract-id>"} --network testnet -- current_state_root</code>
       </footer>
     </main>
   );

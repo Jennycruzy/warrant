@@ -135,6 +135,19 @@ pre {
 }
 a { color: #1f513b; font-weight: 800; }
 footer { max-width: 1180px; margin: 18px auto 0; font-size: 13px; }
+footer p { margin: 0 0 8px; }
+footer .verify { color: #17211b; font-weight: 700; margin-top: 12px; }
+footer code {
+  display: block;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: #17211b;
+  color: #7ee0b0;
+  border-radius: 8px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
 
 @media (max-width: 900px) {
   main { padding: 16px; }
