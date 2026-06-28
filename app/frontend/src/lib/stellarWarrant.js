@@ -69,6 +69,21 @@ function errorReason(tx) {
   return { code: undefined, name: undefined };
 }
 
+// Contract getters return BytesN<32>; scValToNative gives raw bytes. Render as hex
+// (not String(), which decodes the bytes as text and produces garbage).
+function bytesToHex(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  const bytes = v instanceof Uint8Array
+    ? v
+    : ArrayBuffer.isView(v)
+      ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
+      : Uint8Array.from(v);
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
 async function waitForTx(server, hash, timeoutMs = 90000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -93,10 +108,10 @@ export async function readContractState({ rpcUrl, contractId }) {
       .setTimeout(30)
       .build();
     const res = await server.simulateTransaction(tx);
-    return res.result?.retval ? StellarSdk.scValToNative(res.result.retval) : "";
+    return res.result?.retval ? bytesToHex(StellarSdk.scValToNative(res.result.retval)) : "";
   }
   const [root, commitment] = await Promise.all([simulate("current_state_root"), simulate("policy_commitment")]);
-  return { root: String(root), commitment: String(commitment) };
+  return { root, commitment };
 }
 
 // Compliant path: simulate (the pre-flight gate), submit, confirm SUCCESS, and return
