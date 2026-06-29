@@ -80,6 +80,44 @@ select {
   padding: 0 12px;
 }
 
+.walletbox { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.netbadge {
+  border-radius: 999px;
+  background: #b7dfc1;
+  color: #14331f;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.netbadge.warn { background: #f1b2a8; color: #5a1a12; }
+.connect { background: #2d6a4f; }
+.addr { background: #17211b; font-family: ui-monospace, Menlo, monospace; }
+
+.balances {
+  max-width: 1180px;
+  margin: 0 auto 16px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.balcard {
+  border: 1px solid rgba(23, 33, 27, .16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .8);
+  padding: 14px 16px;
+}
+.balcard.refresh { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.baltitle { margin: 0 0 6px; color: #4d6a58; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.balval { margin: 0; font-size: 22px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
+.balsym { font-size: 13px; color: #4d6a58; }
+.balraw { margin: 4px 0 0; font-size: 11px; color: #7c8a80; font-family: ui-monospace, Menlo, monospace; }
+
+.fundrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; margin-top: 16px; }
+.fundrow input { min-height: 42px; border: 1px solid rgba(23, 33, 27, .2); border-radius: 8px; padding: 0 12px; }
+.fundrow button { white-space: nowrap; }
+.feedrow { grid-template-columns: auto auto 1fr auto; }
+.ts { font-size: 11px; color: #7c8a80; font-family: ui-monospace, Menlo, monospace; }
+
 .buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
 button {
   min-height: 42px;
@@ -155,4 +193,5 @@ footer code {
   h1 { font-size: 36px; }
   .grid { grid-template-columns: 1fr; }
   .buttons { grid-template-columns: 1fr; }
+  .balances { grid-template-columns: 1fr 1fr; }
 }

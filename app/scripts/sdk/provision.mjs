@@ -1,9 +1,21 @@
 import * as snarkjs from "snarkjs";
 import fs from "fs";
 import {
-  S, NET, fundFriendbot, submitAuto, submitClassic, invoke,
+  S, NET, fundFriendbot, submitAuto, submitClassic, invoke, read,
   scBytes, scBytesN, scU32, scAddr, scI128,
 } from "./chain.mjs";
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// After init, the RPC simulation node may lag behind Horizon: a follow-up call can
+// still see NotInitialized (#2). Poll a getter until the new state is visible.
+async function waitInitialized(warrantId, tries = 20) {
+  for (let i = 0; i < tries; i++) {
+    const r = await read(warrantId, "current_state_root");
+    if (!r.error && r.value) return;
+    await sleep(2000);
+  }
+}
 import { vkToHex, proofToHex, publicToHex } from "./encode.mjs";
 
 export const WASM_HASH = "16266dde4676e2e0543e77b862ecf6c66b024f5c70c0eb4dd04931459a7096b2";
@@ -81,6 +93,7 @@ export async function configureWarrant({ admin, recipient, warrantId, tokenId, c
   await submitAuto(invoke(warrantId, "init", [
     scAddr(admin.publicKey()), scAddr(tokenId), scBytesN(commitmentHex), scBytesN(genesisRootHex),
   ]), admin, "init");
+  await waitInitialized(warrantId);
   await submitAuto(invoke(warrantId, "set_vk", [scBytes(vkHex)]), admin, "set_vk");
   await submitAuto(invoke(warrantId, "set_oracle", [scBytesN(ORACLE.oraclePubKey)]), admin, "set_oracle");
   await submitAuto(invoke(warrantId, "register_recipient", [scU32(0), scAddr(recipient.publicKey())]), admin, "register_recipient");

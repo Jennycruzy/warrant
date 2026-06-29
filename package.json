@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "demo:setup": "node app/scripts/sdk/setup_demo.mjs",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "audit:secrets": "node app/scripts/audit_secrets.mjs",
+    "test": "node app/scripts/audit_secrets.mjs"
   },
   "keywords": [],
   "author": "",

@@ -22,11 +22,6 @@ function serverFor(rpcUrl) {
   return new rpcNamespace.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") });
 }
 
-function keypairFromSecret(secret) {
-  if (!secret || secret.includes("REPLACE_WITH")) throw new Error("Set VITE_SOURCE_SECRET to a funded testnet secret key.");
-  return StellarSdk.Keypair.fromSecret(secret.trim());
-}
-
 function scBytes(hex) {
   return StellarSdk.xdr.ScVal.scvBytes(hexToBytes(hex));
 }
@@ -54,7 +49,6 @@ function settleOp(contractId, args) {
 }
 
 // Pull the contract-error reason out of a confirmed-FAILED Soroban tx's diagnostics.
-// The RPC returns diagnosticEventsXdr as base64 strings or already-parsed xdr objects.
 function errorReason(tx) {
   for (const d of tx.diagnosticEventsXdr || []) {
     let ev;
@@ -69,8 +63,7 @@ function errorReason(tx) {
   return { code: undefined, name: undefined };
 }
 
-// Contract getters return BytesN<32>; scValToNative gives raw bytes. Render as hex
-// (not String(), which decodes the bytes as text and produces garbage).
+// Contract getters return BytesN<32>; render raw bytes as hex.
 function bytesToHex(v) {
   if (v == null) return "";
   if (typeof v === "string") return v;
@@ -94,85 +87,132 @@ async function waitForTx(server, hash, timeoutMs = 90000) {
   return { status: "NOT_FOUND" };
 }
 
+// Read-only simulate of a contract getter (no signing, no account needed).
+async function simulateGetter(server, contractId, fn, args = []) {
+  const kp = StellarSdk.Keypair.random();
+  const account = new StellarSdk.Account(kp.publicKey(), "0");
+  const tx = new StellarSdk.TransactionBuilder(account, { fee: "100", networkPassphrase: DEFAULT_NETWORK })
+    .addOperation(StellarSdk.Operation.invokeContractFunction({ contract: contractId, function: fn, args }))
+    .setTimeout(30)
+    .build();
+  const res = await server.simulateTransaction(tx);
+  if (rpcNamespace.Api?.isSimulationError?.(res) || res.error) {
+    throw new Error(res.error || "simulation failed");
+  }
+  return res.result?.retval ? StellarSdk.scValToNative(res.result.retval) : null;
+}
+
 export async function readContractState({ rpcUrl, contractId }) {
   if (!contractId) return {};
   const server = serverFor(rpcUrl);
-  async function simulate(fn) {
-    const kp = StellarSdk.Keypair.random();
-    const account = new StellarSdk.Account(kp.publicKey(), "0");
-    const tx = new StellarSdk.TransactionBuilder(account, {
-      fee: "100",
-      networkPassphrase: DEFAULT_NETWORK,
-    })
-      .addOperation(StellarSdk.Operation.invokeContractFunction({ contract: contractId, function: fn, args: [] }))
-      .setTimeout(30)
-      .build();
-    const res = await server.simulateTransaction(tx);
-    return res.result?.retval ? bytesToHex(StellarSdk.scValToNative(res.result.retval)) : "";
-  }
-  const [root, commitment] = await Promise.all([simulate("current_state_root"), simulate("policy_commitment")]);
+  const [root, commitment] = await Promise.all([
+    simulateGetter(server, contractId, "current_state_root").then(bytesToHex).catch(() => ""),
+    simulateGetter(server, contractId, "policy_commitment").then(bytesToHex).catch(() => ""),
+  ]);
   return { root, commitment };
 }
 
-// Compliant path: simulate (the pre-flight gate), submit, confirm SUCCESS, and return
-// the hash plus the BORROWED footprint (Soroban data + min fee) from the valid
-// simulation. The adversarial calls reuse that footprint to force-submit failing txs.
-export async function settleWithPrice(opts) {
-  const server = serverFor(opts.rpcUrl);
-  const source = keypairFromSecret(opts.sourceSecret);
+// Read a token (SAC) balance for an address. Returns raw smallest-unit BigInt as string.
+export async function readTokenBalance({ rpcUrl, tokenId, address }) {
+  if (!tokenId || !address) return null;
+  const server = serverFor(rpcUrl);
+  const arg = new StellarSdk.Address(address).toScVal();
+  const v = await simulateGetter(server, tokenId, "balance", [arg]);
+  return v == null ? "0" : v.toString();
+}
 
-  const account = await server.getAccount(source.publicKey());
-  const tx = new StellarSdk.TransactionBuilder(account, { fee: "1000000", networkPassphrase: opts.networkPassphrase })
-    .addOperation(settleOp(opts.contractId, settleArgs(opts)))
-    .setTimeout(120)
-    .build();
+// Read token metadata: { decimals, symbol, name }.
+export async function readTokenMeta({ rpcUrl, tokenId }) {
+  if (!tokenId) return {};
+  const server = serverFor(rpcUrl);
+  const [decimals, symbol, name] = await Promise.all([
+    simulateGetter(server, tokenId, "decimals").catch(() => null),
+    simulateGetter(server, tokenId, "symbol").catch(() => null),
+    simulateGetter(server, tokenId, "name").catch(() => null),
+  ]);
+  return { decimals, symbol, name };
+}
 
+// Generic helper: simulate -> prepare -> ask the wallet to sign the XDR -> submit -> confirm.
+// `signXdr(xdr, networkPassphrase)` is the wallet signing callback. No secret key here.
+async function signAndSubmit({ server, tx, networkPassphrase, signXdr }) {
   const simulated = await server.simulateTransaction(tx);
   if (rpcNamespace.Api?.isSimulationError?.(simulated) || simulated.error) {
     const err = simulated.error || simulated;
     throw new Error(typeof err === "string" ? err : JSON.stringify(err));
   }
-
   const footprint = {
     sorobanData: simulated.transactionData.build().toXDR("base64"),
     minResourceFee: simulated.minResourceFee,
   };
-
   const prepared = assembleTransaction(tx, simulated).build();
-  prepared.sign(source);
-  const sent = await server.sendTransaction(prepared);
+  const signedXdr = await signXdr(prepared.toXDR(), networkPassphrase);
+  const signedTx = StellarSdk.TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
+  const sent = await server.sendTransaction(signedTx);
   if (sent.status === "ERROR") throw new Error(JSON.stringify(sent.errorResult || sent));
-
   const result = await waitForTx(server, sent.hash);
+  return { hash: sent.hash, result, footprint };
+}
+
+// Fund the warrant contract from the connected wallet (the wallet is `from`).
+export async function fundContract({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, amount }) {
+  const server = serverFor(rpcUrl);
+  const account = await server.getAccount(sourcePublicKey);
+  const op = StellarSdk.Operation.invokeContractFunction({
+    contract: contractId,
+    function: "fund",
+    args: [
+      new StellarSdk.Address(sourcePublicKey).toScVal(),
+      StellarSdk.nativeToScVal(BigInt(amount), { type: "i128" }),
+    ],
+  });
+  const tx = new StellarSdk.TransactionBuilder(account, { fee: "1000000", networkPassphrase })
+    .addOperation(op).setTimeout(120).build();
+  const { hash, result } = await signAndSubmit({ server, tx, networkPassphrase, signXdr });
+  if (result.status !== "SUCCESS") {
+    const r = errorReason(result);
+    throw new Error(`funding did not confirm (${result.status}${r.name ? `, ${r.name}` : ""})`);
+  }
+  return { hash, status: "SUCCESS" };
+}
+
+// Compliant path: simulate (the pre-flight gate), wallet-sign, submit, confirm SUCCESS,
+// and return the BORROWED footprint so adversarial calls can force-submit failing txs.
+export async function settleWithPrice({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, proofHex, publicHex, price, timestamp, signatureHex }) {
+  const server = serverFor(rpcUrl);
+  const account = await server.getAccount(sourcePublicKey);
+  const tx = new StellarSdk.TransactionBuilder(account, { fee: "1000000", networkPassphrase })
+    .addOperation(settleOp(contractId, settleArgs({ proofHex, publicHex, price, timestamp, signatureHex })))
+    .setTimeout(120).build();
+  const { hash, result, footprint } = await signAndSubmit({ server, tx, networkPassphrase, signXdr });
   if (result.status !== "SUCCESS") {
     const r = errorReason(result);
     throw new Error(`settlement did not confirm (${result.status}${r.name ? `, ${r.name}` : ""})`);
   }
-  return { hash: sent.hash, status: "SUCCESS", footprint };
+  return { hash, status: "SUCCESS", footprint };
 }
 
 // Adversarial path: build a settle tx with a BORROWED footprint from a prior valid
 // simulation and submit it WITHOUT a pre-flight gate, so a deliberately invalid
-// settlement still lands on-chain and the contract reverts. Returns the real hash,
-// the on-chain status (expected "FAILED"), and the decoded revert reason.
-export async function settleWithFootprint(opts) {
-  if (!opts.footprint?.sorobanData) throw new Error("no borrowed footprint — run a compliant settlement first");
-  const server = serverFor(opts.rpcUrl);
-  const source = keypairFromSecret(opts.sourceSecret);
-  const fee = (BigInt(opts.footprint.minResourceFee) + 5_000_000n).toString();
-  const args = settleArgs(opts);
+// settlement still lands on-chain and the contract reverts. The wallet still signs it.
+export async function settleWithFootprint({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, proofHex, publicHex, price, timestamp, signatureHex, footprint }) {
+  if (!footprint?.sorobanData) throw new Error("no borrowed footprint — run a compliant settlement first");
+  const server = serverFor(rpcUrl);
+  const fee = (BigInt(footprint.minResourceFee) + 5_000_000n).toString();
+  const args = settleArgs({ proofHex, publicHex, price, timestamp, signatureHex });
 
   let lastHash;
   for (let round = 0; round < 4; round++) {
-    const account = await server.getAccount(source.publicKey());
-    const tx = new StellarSdk.TransactionBuilder(account, { fee, networkPassphrase: opts.networkPassphrase })
-      .addOperation(settleOp(opts.contractId, args))
-      .setSorobanData(opts.footprint.sorobanData)
+    const account = await server.getAccount(sourcePublicKey);
+    const tx = new StellarSdk.TransactionBuilder(account, { fee, networkPassphrase })
+      .addOperation(settleOp(contractId, args))
+      .setSorobanData(footprint.sorobanData)
       .setTimeout(120)
       .build();
-    tx.sign(source);
+    const signedXdr = await signXdr(tx.toXDR(), networkPassphrase);
+    const signedTx = StellarSdk.TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
 
-    const sent = await server.sendTransaction(tx);
+    const sent = await server.sendTransaction(signedTx);
     if (sent.status === "TRY_AGAIN_LATER") { await sleep(3000); continue; }
     if (sent.status === "ERROR") {
       const name = sent.errorResult?.result?.()?.switch?.()?.name;
