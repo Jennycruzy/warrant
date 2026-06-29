@@ -154,6 +154,49 @@ Connect the wallet, fund the warrant, then click **Generate proof & settle**. Th
 forged/replay buttons submit real reverting transactions. Try over-limit / non-allowlisted
 to see the proof fail before any transaction is built.
 
+## Deploy to Vercel
+
+`vercel.json` at the repo root makes this a one-click deploy — no dashboard settings,
+no environment variables.
+
+1. Push to GitHub (already done for this repo).
+2. In Vercel, **Add New → Project → Import** this repository.
+3. Leave every setting at its default and click **Deploy**. `vercel.json` already sets
+   the build to `app/frontend` and the output to `app/frontend/dist`.
+
+Notes:
+- **No env vars are required.** The app reads its public config from
+  `app/frontend/public/demo-config.json`. Do **not** add any `VITE_*` secret — Vite bundles
+  those into browser code.
+- The circuit (`.wasm`, 2.7 MB) and proving key (`.zkey`, 2.9 MB) are committed to git, so
+  Vercel serves them and in-browser proving works on the deployed site.
+- Visitors must install Freighter and set it to **Testnet**.
+
+### One-shot settlement and resetting
+
+The bundled compliant proof extends the **genesis** book state, and the demo mandate
+(`maxPosition`, `peakEquity`, fixed oracle price) is calibrated so that **exactly one
+meaningful compliant settlement is provable per contract** — the private position starts
+at the equity cap and only grows, so no valid witness exists for a second settlement.
+This is the replay/risk protection working as designed.
+
+So on a hosted link, the **first** visitor's *Generate proof & settle* lands a real
+settlement; afterwards the UI detects that the on-chain root has advanced and shows a
+clear "already used" message **without** submitting a doomed transaction. Forged, replay,
+over-limit, and non-allowlisted attempts keep working for everyone.
+
+To make *settle* available again (e.g. between demo recordings), re-provision a fresh
+genesis contract and redeploy:
+
+```bash
+npm install
+npm run demo:reprovision   # writes app/frontend/public/demo-config.json + .keys.json
+git add app/frontend/public/demo-config.json && git commit -m "Re-provision demo contract" && git push
+```
+
+`.keys.json` holds the new admin secret and is git-ignored — never commit it. Vercel
+redeploys automatically on push.
+
 ## Wallet security
 
 - The frontend **never** stores or uses a Stellar secret key. There is no

@@ -228,6 +228,22 @@ export default function App() {
         await proveScenario(scenario);
         throw new Error("unexpectedly produced a proof for a blocked action");
       }
+      // Live-root guard: the bundled compliant proof extends the GENESIS book state,
+      // and the demo mandate makes exactly one such settlement provable. If the
+      // on-chain root has already advanced, a compliant settle would revert with
+      // StaleStateRoot — so detect it and explain instead of submitting a doomed tx.
+      const live = await readContractState({ rpcUrl, contractId: config.contractId });
+      setChain(live);
+      const liveRoot = (live.root || "").toLowerCase();
+      const genesis = (config.genesisRootHex || "").toLowerCase();
+      if (liveRoot && genesis && liveRoot !== genesis) {
+        setStatus("blocked");
+        appendFeed({ kind: "blocked", text: "Compliant settlement already used on this deployment" });
+        setMessage(
+          "This deployment's one compliant settlement has already been performed — the on-chain state root has advanced past genesis, so no further compliant proof exists for it (replay protection). Forged, replay, over-limit, and non-allowlisted attempts still work. Operator: run `npm run demo:reprovision` to mint a fresh genesis contract."
+        );
+        return;
+      }
       const result = await proveScenario("valid");
       setProofHex(result.proofHex);
       setPublicHex(result.publicHex);
