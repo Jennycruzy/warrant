@@ -59,6 +59,32 @@ the powers-of-tau ceremony uses the `bls12381` curve, and the on-chain verifier 
 `env.crypto().bls12_381()`. This was confirmed directly against the on-chain verifier
 and a real proving key, not assumed.
 
+## Live oracle: Reflector (SEP-40)
+
+The price mark can come from the **live [Reflector](https://reflector.network) oracle**, a
+real decentralized price feed on Stellar. The contract's `settle_with_reflector` entrypoint
+performs an on-chain **cross-contract call** to Reflector's SEP-40 `lastprice(Other(asset))`,
+reads the authenticated price, and requires that exact price to be the price the Groth16 proof
+was built against. No matching live price, no settlement — so the agent can only act on a
+*current, real* oracle mark, and a proof built against any other price reverts on-chain.
+
+- Reflector testnet oracle (CEX/DEX feed, base USD, 14 decimals): `CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63`
+- Run it: `node app/scripts/sdk/drive_reflector.mjs` (provisions fresh, reads the live XLM/USD
+  price, proves bound to it, settles via the on-chain Reflector read, then shows a wrong-price
+  attempt revert).
+
+Real testnet run (XLM/USD `17764414800342` ≈ $0.1776):
+
+| Scenario | Expected | Actual | Tx |
+| --- | --- | --- | --- |
+| **Compliant, priced by live Reflector** | SUCCESS | ✅ SUCCESS, 50 moved, root advanced | [`d0053bba…fc826b1a`](https://stellar.expert/explorer/testnet/tx/d0053bba25f66d36249621b30380c5845b68fdc464d823f39a65ad7ffc826b1a) |
+| **Proof bound to a fabricated price** | revert | ✅ REVERTED `PriceMismatch #15` (contract re-read Reflector) | [`1c90b4de…78dea775`](https://stellar.expert/explorer/testnet/tx/1c90b4de5ed8db88044ca07555be7e83544b036cdae24c626df7e6c878dea775) |
+
+The contract also keeps a self-signed (Ed25519) price path (`settle_with_price`) for the
+deterministic, replayable UI demo, whose fixed price keeps the chained settlement sequence
+reproducible. Both paths bind the same sixth public signal; only the *source* of the price
+differs (live Reflector vs an admin-signed report).
+
 ## Toolchain
 
 - circom 2.2.3 (built from source)
@@ -269,8 +295,12 @@ hash against the proof's public input, removing the admin-controlled id→addres
   setup here is a demo ceremony, not a production MPC).
 - Recipient binding uses recipient ids mapped to registered addresses (see above), not
   address-hash leaves.
+- The live-oracle path reads the **real Reflector** SEP-40 feed on-chain; the alternate
+  `settle_with_price` path uses an admin-signed price and is what the deterministic UI demo
+  uses. A live price moves between rounds, so the oracle-priced demo settles from a
+  price-independent genesis (position 0) within one Reflector update round.
 - Production use needs audited circuits and contracts, a real trusted-setup ceremony,
-  and hardened oracle/key management.
+  and hardened key management.
 
 ## Nothing is mocked
 

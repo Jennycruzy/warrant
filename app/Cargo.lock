@@ -1393,13 +1393,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "soroban-groth16-verifier"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "soroban-ledger-snapshot"
 version = "25.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

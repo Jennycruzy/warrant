@@ -18,7 +18,12 @@ async function waitInitialized(warrantId, tries = 20) {
 }
 import { vkToHex, proofToHex, publicToHex } from "./encode.mjs";
 
-export const WASM_HASH = "16266dde4676e2e0543e77b862ecf6c66b024f5c70c0eb4dd04931459a7096b2";
+export const WASM_HASH = "1d9d75d90eed9c97515ce17531f76b1adbb21111064a91a6fe4084bdf7594e45";
+// Live Reflector SEP-40 oracle (CEX/DEX feed) on Stellar testnet, base USD, 14 decimals.
+export const REFLECTOR = {
+  contract: "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
+  asset: "XLM",
+};
 export const ORACLE = {
   oraclePubKey: "eaee897380a52a6b18205c33d79ed68e26f23ab85f46a9f74e044a989411af0b",
   signatureHex: "9ad495a06680cc8b1fc16981dfeba9a1d4acc87f972ce5b135589c7feeb03aaf31d60c600f85a82e754e1780be689968b07c7cbaac43d035cb3beb2000821200",

@@ -15,7 +15,7 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
     crypto::bls12_381::{Fr, G1Affine, G2Affine, G1_SERIALIZED_SIZE, G2_SERIALIZED_SIZE},
-    token, vec, Address, Bytes, BytesN, Env, Vec, U256,
+    token, vec, Address, Bytes, BytesN, Env, IntoVal, Symbol, Vec, U256,
 };
 
 #[contracterror]
@@ -37,6 +37,24 @@ pub enum Error {
     RecipientIdOutOfRange = 13,
     OracleKeyNotSet = 14,
     PriceMismatch = 15,
+    PriceUnavailable = 16,
+    PriceOutOfRange = 17,
+}
+
+// SEP-40 oracle types (must match the Reflector oracle contract's interface so
+// the cross-contract return value decodes correctly).
+#[contracttype]
+#[derive(Clone)]
+pub enum Asset {
+    Stellar(Address),
+    Other(Symbol),
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PriceData {
+    pub price: i128,
+    pub timestamp: u64,
 }
 
 #[contracttype]
@@ -319,6 +337,38 @@ impl Warrant {
             .ok_or(Error::OracleKeyNotSet)?;
         let msg = price_message(&env, price, timestamp);
         env.crypto().ed25519_verify(&oracle_key, &msg, &signature);
+        Self::settle_checked(
+            env,
+            proof_bytes,
+            pub_signals_bytes,
+            N_PUBLIC_ORACLE,
+            Some(price),
+        )
+    }
+
+    /// Release funds for a settlement priced by the LIVE Reflector oracle (SEP-40).
+    /// Instead of an admin-signed price report, the contract performs a cross-contract
+    /// call to `reflector.lastprice(Other(asset))` and requires that exact on-chain
+    /// price to be the sixth public signal verified by the Groth16 proof. No matching
+    /// live price, no settlement.
+    pub fn settle_with_reflector(
+        env: Env,
+        proof_bytes: Bytes,
+        pub_signals_bytes: Bytes,
+        reflector: Address,
+        asset: Symbol,
+    ) -> Result<(), Error> {
+        let query = Asset::Other(asset);
+        let pd: Option<PriceData> = env.invoke_contract(
+            &reflector,
+            &Symbol::new(&env, "lastprice"),
+            vec![&env, query.into_val(&env)],
+        );
+        let pd = pd.ok_or(Error::PriceUnavailable)?;
+        if pd.price <= 0 || pd.price > u64::MAX as i128 {
+            return Err(Error::PriceOutOfRange);
+        }
+        let price = pd.price as u64;
         Self::settle_checked(
             env,
             proof_bytes,
