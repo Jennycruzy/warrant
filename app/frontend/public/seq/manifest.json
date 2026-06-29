@@ -1,0 +1,118 @@
+{
+  "commitmentHex": "2e3da43f5d59ed1757ae427481b609988aca187b7075f43733225a7590893a87",
+  "genesisRootHex": "45be8d721eb60367b8485489cb4668c6690bc8571750ade6ba195e97cba264f1",
+  "price": "10",
+  "amount": "50",
+  "recipient": "0",
+  "count": 12,
+  "settlements": [
+    {
+      "index": 1,
+      "file": "seq/settle_01.input.json",
+      "amount": "50",
+      "prevRootHex": "45be8d721eb60367b8485489cb4668c6690bc8571750ade6ba195e97cba264f1",
+      "nextRootHex": "2cffefaad6f01f110b2b573b1f8d37b4df5a723a867ef203d6d879d88b71732b",
+      "prevPosition": "100",
+      "nextPosition": "150"
+    },
+    {
+      "index": 2,
+      "file": "seq/settle_02.input.json",
+      "amount": "50",
+      "prevRootHex": "2cffefaad6f01f110b2b573b1f8d37b4df5a723a867ef203d6d879d88b71732b",
+      "nextRootHex": "0f8f7eced371188725d6bef25edbf346ed1d67c7a6e40601a04d81fe62068079",
+      "prevPosition": "150",
+      "nextPosition": "200"
+    },
+    {
+      "index": 3,
+      "file": "seq/settle_03.input.json",
+      "amount": "50",
+      "prevRootHex": "0f8f7eced371188725d6bef25edbf346ed1d67c7a6e40601a04d81fe62068079",
+      "nextRootHex": "5cadb2d4a2908e234421ae75efcbe991565df72da0bd11e54e69097065def9ef",
+      "prevPosition": "200",
+      "nextPosition": "250"
+    },
+    {
+      "index": 4,
+      "file": "seq/settle_04.input.json",
+      "amount": "50",
+      "prevRootHex": "5cadb2d4a2908e234421ae75efcbe991565df72da0bd11e54e69097065def9ef",
+      "nextRootHex": "2b0433307223c8d9c48d32796c9499db15bc3e4c0b5e54b2692a7e7b722bb087",
+      "prevPosition": "250",
+      "nextPosition": "300"
+    },
+    {
+      "index": 5,
+      "file": "seq/settle_05.input.json",
+      "amount": "50",
+      "prevRootHex": "2b0433307223c8d9c48d32796c9499db15bc3e4c0b5e54b2692a7e7b722bb087",
+      "nextRootHex": "5352ef8cacee6de06d93915b38b8c73f180f0d4754ddd6cb28b54f71624fb7b4",
+      "prevPosition": "300",
+      "nextPosition": "350"
+    },
+    {
+      "index": 6,
+      "file": "seq/settle_06.input.json",
+      "amount": "50",
+      "prevRootHex": "5352ef8cacee6de06d93915b38b8c73f180f0d4754ddd6cb28b54f71624fb7b4",
+      "nextRootHex": "0ead07c3efccd862a8b2ce3f4c2c700e9cd6314d3adb126508e8590f59982890",
+      "prevPosition": "350",
+      "nextPosition": "400"
+    },
+    {
+      "index": 7,
+      "file": "seq/settle_07.input.json",
+      "amount": "50",
+      "prevRootHex": "0ead07c3efccd862a8b2ce3f4c2c700e9cd6314d3adb126508e8590f59982890",
+      "nextRootHex": "59876d43e06bb7d7f2f27167da3708bf1c7da41fda4fa379f81a6cdc8174a9a7",
+      "prevPosition": "400",
+      "nextPosition": "450"
+    },
+    {
+      "index": 8,
+      "file": "seq/settle_08.input.json",
+      "amount": "50",
+      "prevRootHex": "59876d43e06bb7d7f2f27167da3708bf1c7da41fda4fa379f81a6cdc8174a9a7",
+      "nextRootHex": "2bc335e037479f2fa2805e09533d05e19eda976fbe7660d40965cd3fd59d425c",
+      "prevPosition": "450",
+      "nextPosition": "500"
+    },
+    {
+      "index": 9,
+      "file": "seq/settle_09.input.json",
+      "amount": "50",
+      "prevRootHex": "2bc335e037479f2fa2805e09533d05e19eda976fbe7660d40965cd3fd59d425c",
+      "nextRootHex": "56a56479a511289a5c98cedf352ddbdba3e66c0ccc651fa6e8d88d32596f9e7e",
+      "prevPosition": "500",
+      "nextPosition": "550"
+    },
+    {
+      "index": 10,
+      "file": "seq/settle_10.input.json",
+      "amount": "50",
+      "prevRootHex": "56a56479a511289a5c98cedf352ddbdba3e66c0ccc651fa6e8d88d32596f9e7e",
+      "nextRootHex": "3aee2fc4c9cb38e6d7320af840727b2f20e18836f25cf3ebc2e66c215c5c64cf",
+      "prevPosition": "550",
+      "nextPosition": "600"
+    },
+    {
+      "index": 11,
+      "file": "seq/settle_11.input.json",
+      "amount": "50",
+      "prevRootHex": "3aee2fc4c9cb38e6d7320af840727b2f20e18836f25cf3ebc2e66c215c5c64cf",
+      "nextRootHex": "52cf1916daa40b18a5c3d1f1677adbd60a0b6c22dd7c429d32ef675b5c522d57",
+      "prevPosition": "600",
+      "nextPosition": "650"
+    },
+    {
+      "index": 12,
+      "file": "seq/settle_12.input.json",
+      "amount": "50",
+      "prevRootHex": "52cf1916daa40b18a5c3d1f1677adbd60a0b6c22dd7c429d32ef675b5c522d57",
+      "nextRootHex": "133e0196456e77ee0137cb394d03a1142eecd53d35475eec27bddd4f59ff6635",
+      "prevPosition": "650",
+      "nextPosition": "700"
+    }
+  ]
+}

@@ -65,6 +65,7 @@ function Balance({ title, raw, decimals, symbol, loading }) {
 
 export default function App() {
   const [config, setConfig] = useState(null);
+  const [seq, setSeq] = useState(null); // chained-settlement manifest
   const [chain, setChain] = useState({});
   const [meta, setMeta] = useState({});
   const [balances, setBalances] = useState({ wallet: null, contract: null, recipient: null });
@@ -100,6 +101,10 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then(setConfig)
       .catch(() => setConfig(null));
+    fetch("/seq/manifest.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setSeq)
+      .catch(() => setSeq(null));
   }, []);
 
   // Restore an already-authorized wallet session on load.
@@ -228,27 +233,35 @@ export default function App() {
         await proveScenario(scenario);
         throw new Error("unexpectedly produced a proof for a blocked action");
       }
-      // Live-root guard: the bundled compliant proof extends the GENESIS book state,
-      // and the demo mandate makes exactly one such settlement provable. If the
-      // on-chain root has already advanced, a compliant settle would revert with
-      // StaleStateRoot — so detect it and explain instead of submitting a doomed tx.
+      // Chained settlements: each precomputed input extends the previous one's
+      // state root, so the SAME contract accepts many compliant settlements in a
+      // row. Match the current on-chain root to the input that extends it; if none
+      // matches, the agent has reached the mandate cap (no further proof exists).
       const live = await readContractState({ rpcUrl, contractId: config.contractId });
       setChain(live);
       const liveRoot = (live.root || "").toLowerCase();
-      const genesis = (config.genesisRootHex || "").toLowerCase();
-      if (liveRoot && genesis && liveRoot !== genesis) {
+      const entry = seq?.settlements?.find((s) => s.prevRootHex.toLowerCase() === liveRoot);
+      if (!entry) {
         setStatus("blocked");
-        appendFeed({ kind: "blocked", text: "Compliant settlement already used on this deployment" });
+        appendFeed({ kind: "blocked", text: "All chained settlements used on this deployment" });
         setMessage(
-          "This deployment's one compliant settlement has already been performed — the on-chain state root has advanced past genesis, so no further compliant proof exists for it (replay protection). Forged, replay, over-limit, and non-allowlisted attempts still work. Operator: run `npm run demo:reprovision` to mint a fresh genesis contract."
+          `All ${seq?.count ?? "demo"} compliant settlements for this deployment have been performed — the agent's position has reached the private mandate cap, so no further compliant proof exists (the position/drawdown limit working as designed). Forged, replay, over-limit, and non-allowlisted attempts still work. Operator: run \`npm run demo:reprovision\` to mint a fresh contract.`
         );
         return;
       }
-      const result = await proveScenario("valid");
+      setStatus("witness");
+      const input = await fetch(`/${entry.file}`).then((r) => r.json());
+      setStatus("proving");
+      const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+        input,
+        "/circuits/mandate_oracle_allow.wasm",
+        "/proving/mandate_oracle_allow_final.zkey"
+      );
+      const result = { proofHex: proofToHex(proof), publicHex: publicSignalsToHex(publicSignals), publicSignals };
       setProofHex(result.proofHex);
       setPublicHex(result.publicHex);
       setStatus("submitting");
-      setMessage("Proof generated — approve the settlement in your wallet.");
+      setMessage(`Settlement #${entry.index} of ${seq.count} — proof generated, approve it in your wallet.`);
       const sent = await settleWithPrice({
         rpcUrl, networkPassphrase: network, sourcePublicKey: wallet, signXdr,
         contractId: config.contractId,
@@ -258,8 +271,9 @@ export default function App() {
       setStatus("settled");
       setLastProof(result);
       setFootprint(sent.footprint);
-      appendFeed({ kind: "settled", text: "Compliant settlement paid recipient", hash: sent.hash });
-      setMessage("Settled on-chain. State root advanced and the recipient was paid. Forged/replay attempts now land as real reverted txs.");
+      appendFeed({ kind: "settled", text: `Compliant settlement #${entry.index} of ${seq.count} paid recipient`, hash: sent.hash });
+      const remaining = seq.count - entry.index;
+      setMessage(`Settlement #${entry.index} of ${seq.count} on-chain — state root advanced and the recipient was paid.${remaining > 0 ? ` ${remaining} more compliant settlement${remaining === 1 ? "" : "s"} can be chained — click again.` : " The agent has now reached the mandate cap."} Forged/replay attempts land as real reverted txs.`);
       setChain(await readContractState({ rpcUrl, contractId: config.contractId }));
       await refreshBalances();
     } catch (err) {
@@ -347,8 +361,9 @@ export default function App() {
     <main>
       <section className="topbar">
         <div>
-          <p className="eyebrow">Private mandate. Public settlement.</p>
+          <p className="eyebrow">Custody an autonomous agent cannot break</p>
           <h1>WARRANT</h1>
+          <p className="muted">A ZK-enforced private mandate for agents that hold funds. The agent can move {symbol} only by proving the move obeys a mandate it cannot see. Private mandate, public settlement.</p>
         </div>
         <div className="walletbox">
           <span className={`netbadge ${onTestnet ? "" : "warn"}`}>{onTestnet ? "Stellar Testnet" : "Wrong network"}</span>

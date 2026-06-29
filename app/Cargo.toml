@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "contracts/verifier",
   "contracts/warrant",
   "tools/encoder",
 ]

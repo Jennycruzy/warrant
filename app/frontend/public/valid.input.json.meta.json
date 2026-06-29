@@ -2,10 +2,11 @@
   "member": true,
   "commitmentHex": "2e3da43f5d59ed1757ae427481b609988aca187b7075f43733225a7590893a87",
   "prevRootHex": "45be8d721eb60367b8485489cb4668c6690bc8571750ade6ba195e97cba264f1",
-  "nextRootHex": "6511339da7ed116afb316441e18d51e92dc43bf6d03364f875c1afa5f8f253a7",
+  "nextRootHex": "2cffefaad6f01f110b2b573b1f8d37b4df5a723a867ef203d6d879d88b71732b",
   "allowlistRoot": "16151743990255126921066669447617739820848724188945092149080184096520996827612",
   "currentEquity": "1000",
   "nextEquity": "1500",
   "nextPosition": "150",
+  "nextPeak": "1500",
   "price": "10"
 }

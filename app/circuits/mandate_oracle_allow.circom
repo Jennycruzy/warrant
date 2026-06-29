@@ -99,9 +99,21 @@ template MandateOracleAllow(depth) {
 
     signal nextEquity;
     nextEquity <== nextPosition * price;
+
+    // Running high-water mark: the book's peak equity rises to track new highs.
+    // peakEquity stays fixed while position grows (currentEquity == peakEquity on
+    // the way up, so drawdown is 0), which is what lets the SAME contract chain
+    // many compliant settlements instead of exactly one. Drawdown protection still
+    // bites whenever equity FALLS below the mark (e.g. a lower oracle price).
+    component geNext = GreaterEqThan(64);
+    geNext.in[0] <== nextEquity;
+    geNext.in[1] <== peakEquity;
+    signal nextPeak;
+    nextPeak <== peakEquity + geNext.out * (nextEquity - peakEquity);
+
     component next = Poseidon(3);
     next.inputs[0] <== nextPosition;
-    next.inputs[1] <== peakEquity;
+    next.inputs[1] <== nextPeak;
     next.inputs[2] <== nextEquity;
     nextStateRoot === next.out;
 

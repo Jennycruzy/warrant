@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "setup:toolchain": "bash app/scripts/setup_toolchain.sh",
     "demo:setup": "node app/scripts/sdk/setup_demo.mjs",
     "demo:reprovision": "node app/scripts/sdk/setup_demo.mjs app/frontend/public/demo-config.json .keys.json",
     "audit:secrets": "node app/scripts/audit_secrets.mjs",

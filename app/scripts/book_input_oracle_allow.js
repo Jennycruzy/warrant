@@ -27,10 +27,13 @@ async function main() {
   const currentEquity = (BigInt(position) * BigInt(price)).toString();
   const nextPosition = (BigInt(position) + BigInt(amount)).toString();
   const nextEquity = (BigInt(nextPosition) * BigInt(price)).toString();
+  // Running high-water mark (mirrors the circuit): peak rises to track new highs.
+  const nextPeak = (BigInt(nextEquity) >= BigInt(peakEquity)
+    ? BigInt(nextEquity) : BigInt(peakEquity)).toString();
 
   const policyCommitment = await poseidon4(maxPerTx, maxPosition, drawdownLimit, allowlistRoot);
   const prevStateRoot = await poseidon3(position, peakEquity, currentEquity);
-  const nextStateRoot = await poseidon3(nextPosition, peakEquity, nextEquity);
+  const nextStateRoot = await poseidon3(nextPosition, nextPeak, nextEquity);
 
   const input = {
     policyCommitment, prevStateRoot, nextStateRoot,
@@ -51,6 +54,7 @@ async function main() {
     currentEquity,
     nextEquity,
     nextPosition,
+    nextPeak,
     price: String(price),
   };
   fs.writeFileSync(outFile + ".meta.json", JSON.stringify(meta, null, 2));

@@ -24,7 +24,7 @@ import {
   scBytes, scBytesN, scU64, scAddr, explorerTx, explorerC,
 } from "./chain.mjs";
 import {
-  proveValid, getVkHex, makeKeys, fundKeys, deployStablecoin,
+  proveValid, proveSeq, getVkHex, makeKeys, fundKeys, deployStablecoin,
   trustline, deployWarrant, configureWarrant, ORACLE,
 } from "./provision.mjs";
 import { publicToHex } from "./encode.mjs";
@@ -108,34 +108,47 @@ const settleOp = (proofHex, publicHex) =>
   ]);
 
 // ---------------------------------------------------------------------------
-console.log("Phase A — COMPLIANT settlement (must SUCCEED)");
-const before = await waitForState(CID, TOKEN, RECIP, (s) => s.cbal === FUND);
-console.log(`  before: root=${before.root.slice(0, 16)}… custody=${before.cbal} recipient=${before.rbal}`);
-console.log("  proving valid scenario with snarkjs…");
-const v = await proveValid();
-const nextRootHex = dec2hex32(v.publicSignals[2]);
+const N_SETTLE = Number(process.env.N_SETTLE || 3);
+console.log(`Phase A — ${N_SETTLE} CHAINED COMPLIANT settlements (each must SUCCEED and extend the root)`);
+const start = await waitForState(CID, TOKEN, RECIP, (s) => s.cbal === FUND);
+console.log(`  start : root=${start.root.slice(0, 16)}… custody=${start.cbal} recipient=${start.rbal}`);
 
-const okRes = await submitAuto(settleOp(v.proofHex, v.publicHex), submitter, "compliant settle");
-console.log("  ✅ SUCCESS tx:", explorerTx(okRes.hash));
+let v, okRes;
+let prev = start;
+let chainOk = true;
+for (let i = 1; i <= N_SETTLE; i++) {
+  console.log(`  proving settlement #${i} with snarkjs…`);
+  v = await proveSeq(i);
+  const nextRootHex = dec2hex32(v.publicSignals[2]);
+  // sanity: this settlement must extend the current on-chain root
+  if (dec2hex32(v.publicSignals[1]) !== prev.root) {
+    console.log(`    ❌ settlement #${i} prevRoot does not match on-chain root`); chainOk = false; break;
+  }
+  okRes = await submitAuto(settleOp(v.proofHex, v.publicHex), submitter, `compliant settle #${i}`);
+  const after = await waitForState(CID, TOKEN, RECIP,
+    (s) => s.root === nextRootHex && BigInt(s.cbal) === BigInt(prev.cbal) - SETTLE);
+  const moved = after.root === nextRootHex &&
+    BigInt(prev.cbal) - BigInt(after.cbal) === SETTLE &&
+    BigInt(after.rbal) - BigInt(prev.rbal) === SETTLE;
+  chainOk = chainOk && moved;
+  console.log(`  #${i} ✅ ${explorerTx(okRes.hash)}`);
+  console.log(`     root ${prev.root.slice(0, 12)}…->${after.root.slice(0, 12)}…  custody ${prev.cbal}->${after.cbal}  recipient ${prev.rbal}->${after.rbal}  ${moved ? "OK" : "MISMATCH ❌"}`);
+  prev = after;
+}
+const totalMoved = BigInt(start.cbal) - BigInt(prev.cbal);
+console.log(`  ${N_SETTLE} settlements chained, moved ${totalMoved} total: ${chainOk && totalMoved === SETTLE * BigInt(N_SETTLE) ? "VERIFIED ✅" : "MISMATCH ❌"}\n`);
 
-// Borrow this valid simulation's footprint for the adversarial submissions.
+// Borrow the last valid simulation's footprint for the adversarial submissions.
 const sorobanB64 = okRes.sim.transactionData.build().toXDR("base64");
 const minResourceFee = okRes.sim.minResourceFee;
-
-const after = await waitForState(CID, TOKEN, RECIP,
-  (s) => s.root === nextRootHex && BigInt(s.cbal) === BigInt(before.cbal) - SETTLE);
-const movedOk = after.root === nextRootHex &&
-  BigInt(before.cbal) - BigInt(after.cbal) === SETTLE &&
-  BigInt(after.rbal) - BigInt(before.rbal) === SETTLE;
-console.log(`  after : root=${after.root.slice(0, 16)}… custody=${after.cbal} recipient=${after.rbal}`);
-console.log(`  root advanced + ${SETTLE} moved: ${movedOk ? "VERIFIED ✅" : "MISMATCH ❌"}\n`);
+const after = prev;
 
 // ---------------------------------------------------------------------------
 console.log("Phase B — ADVERSARIAL settlements (must land as REVERTED txs)");
 
-// FORGED: present the real proof but lie about which state it extends. Claim
-// prevStateRoot = current root (passes the staleness check) while the proof
-// actually attests genesis -> next. The pairing then fails => ProofInvalid #10.
+// FORGED: present the last real proof but lie about which state it extends. Claim
+// prevStateRoot = current on-chain root (passes the staleness check) while the
+// proof actually attests a different transition. The pairing then fails => ProofInvalid #10.
 const forgedSignals = [...v.publicSignals];
 forgedSignals[1] = v.publicSignals[2]; // prev := current root
 forgedSignals[2] = "12345";            // a next root the proof does not attest
@@ -143,8 +156,8 @@ const forged = await submitWithFootprint(settleOp(v.proofHex, publicToHex(forged
 console.log(`  FORGED ${forged.status === "FAILED" ? "✅ REVERTED" : "❌ " + forged.status}: ${explorerTx(forged.hash)}`);
 console.log("    reason:", forged.status === "FAILED" ? await failReason(forged.hash) : "(landed unexpectedly)");
 
-// REPLAY: resubmit Phase A's exact proof+signals; prevStateRoot is genesis but
-// the root has advanced => StaleStateRoot #9.
+// REPLAY: resubmit the last settlement's exact proof+signals; its prevStateRoot
+// was already consumed and the root has advanced => StaleStateRoot #9.
 const replay = await submitWithFootprint(settleOp(v.proofHex, v.publicHex), submitter, sorobanB64, minResourceFee, "replay");
 console.log(`  REPLAY ${replay.status === "FAILED" ? "✅ REVERTED" : "❌ " + replay.status}: ${explorerTx(replay.hash)}`);
 console.log("    reason:", replay.status === "FAILED" ? await failReason(replay.hash) : "(landed unexpectedly)");

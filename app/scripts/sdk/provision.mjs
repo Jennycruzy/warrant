@@ -39,6 +39,16 @@ export async function proveValid() {
   return { proofHex: proofToHex(proof), publicHex: publicToHex(publicSignals), publicSignals };
 }
 
+// Prove the i-th settlement in the precomputed chained sequence (1-based). Each
+// extends the previous one's state root, so submitting them in order performs
+// many real compliant settlements against the SAME contract.
+export async function proveSeq(i) {
+  const file = pub(`seq/settle_${String(i).padStart(2, "0")}.input.json`);
+  const input = JSON.parse(fs.readFileSync(file));
+  const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, ART.wasm, ART.zkey);
+  return { proofHex: proofToHex(proof), publicHex: publicToHex(publicSignals), publicSignals };
+}
+
 export async function getVkHex() {
   const vk = await snarkjs.zKey.exportVerificationKey(ART.zkey);
   return vkToHex(vk);

@@ -1,6 +1,25 @@
 # WARRANT
 
-**Private mandate. Public settlement.**
+**Custody an autonomous agent cannot break. Private mandate, public settlement.**
+
+## Who this is for
+
+Picture an **autonomous trading agent** that holds funds and moves them on its own.
+You need two things at once that are normally in tension:
+
+1. The agent must be **physically incapable** of exceeding the limits you set — per-trade
+   size, total position, drawdown, and who it may pay.
+2. Those limits must stay **private**. A mandate published on-chain is a map your
+   competitors and front-runners read and game.
+
+WARRANT gives you both. The principal commits a *hashed* mandate on-chain and funds a
+custody contract. After that, the agent can move money **only** by producing a zero-knowledge
+proof that the move obeys the mandate and extends the contract's state-root chain. There is
+no other code path that releases funds: a non-compliant move can't even *produce* a proof,
+and a forged or replayed proof reverts on-chain. The leash is enforced by mathematics — and
+nobody, not even the agent, can see the leash.
+
+## How it works
 
 WARRANT is a Soroban (Stellar) contract that releases a stablecoin **only** when a
 Groth16 zero-knowledge proof shows the transfer obeys a pre-committed, private
@@ -47,6 +66,12 @@ and a real proving key, not assumed.
 - Stellar CLI 27.0.0, targeting testnet
 - Rust (stable) with `wasm32v1-none` for the Soroban contract
 
+Bootstrap all of the above (idempotent — skips whatever is already installed):
+
+```bash
+npm run setup:toolchain    # app/scripts/setup_toolchain.sh
+```
+
 ## Layout
 
 ```
@@ -67,9 +92,9 @@ The deployment the UI talks to (`app/frontend/public/demo-config.json`), all on
 
 | Thing | Value |
 | --- | --- |
-| Warrant contract | `CBOFK4I5LHP653B3YPBJEYSR5JE7F6NRYXW2KPFBWQPP6ATQHNBOLT7W` |
-| USDW token (SAC) | `CDA2EF72QUX4TZPMBD2D2D37QVXJK3RGGILIBMSEFMZQLR55FIH7P4XL` |
-| Recipient 0 | `GCWEVQJSSYMEEJW3NE4GNN3B7JSCZ3Z3ZI24AB3YFPIDYEL45GRLFGNL` |
+| Warrant contract | `CA4F7XRMZVDL4WKPKJIKGJUMFPI5HBCX5OV6N5BCHEDPHWVH4SVK3NFE` |
+| USDW token (SAC) | `CBJ3ZUCZMLI5VSVFNHXAIWMYETEXKDLXH7UR7ZSF5WSL5OEPNQIACIQV` |
+| Recipient 0 | `GAXIYPH63NUKNMGDGTMEHW3CR7XBXB3NA4FM4B2FK35Q23JVF4I2OGLE` |
 | Oracle public key (Ed25519) | `eaee897380a52a6b18205c33d79ed68e26f23ab85f46a9f74e044a989411af0b` |
 | Network passphrase | `Test SDF Network ; September 2015` |
 | Soroban RPC | `https://soroban-testnet.stellar.org` |
@@ -83,34 +108,35 @@ Live on-chain reads at the time of writing (no keys needed — see commands belo
 - contract USDW balance = `100000` raw (0.01 USDW), recipient balance = `0`
 
 This contract is intentionally left **at genesis** so a viewer can perform the first
-compliant settlement live from their own wallet.
+of **12 chained** compliant settlements live from their own wallet, then keep going.
 
-## Evidence: the full sequence on a fresh contract
+## Evidence: chained settlements + adversarial reverts on a fresh contract
 
-`node app/scripts/sdk/drive.mjs` provisions a brand-new warrant on testnet and drives
-the whole sequence as real, explorer-visible transactions (compliant settlement,
-forged proof, replayed proof). The run below is real testnet output:
+`N_SETTLE=3 node app/scripts/sdk/drive.mjs` provisions a brand-new warrant on testnet and
+drives the whole sequence as real, explorer-visible transactions: **three chained compliant
+settlements** (each extends the prior state root), then a forged proof and a replayed proof.
+The run below is real testnet output:
 
-- Fresh warrant: `CBGEHDCK6MFQSIMRGAJ2EXOEEGZXVF47QO5OI66C26YBK3Y2OQU26R6W`
-- Fresh USDW token: `CCSVPYDZP774HT3DTWVXHRR5CYZ5SI756TTRBYEVJA6EXVK6PYXXXROQ`
-- Submitter/admin: `GDTIPALCVH4HENB3TDPMZC2T7DALO7TT2U57Z5NEX4GE23MHYM65TLRL`
-- Recipient 0: `GC4VICLKMH7QU7XSFSTHDO76Q2ZVJUDXPLGZ7LUZ72LZELRGAYV3P5MY`
+- Fresh warrant: `CAAGUC2UDIDMGTIFENCMB3NFOV37DGRR56WH5SRQERQXUMY3WXZGD7MF`
+- Submitter/admin: `GBUFYAOIT7MW6DXA5KFFXPZ7C3STKLRLRX4OFQNHVIYYUKYDZFFVR6O3`
 
 | Scenario | Expected | Actual | Tx hash / proof error | Custody (raw) | Recipient (raw) | State root |
 | --- | --- | --- | --- | --- | --- | --- |
-| Contract initialized | genesis root | OK | (init) | 100000 | 0 | `45be8d72…cba264f1` |
-| Contract funded (USDW) | 100000 custodied | OK | (mint) | 100000 | 0 | `45be8d72…cba264f1` |
-| **Compliant settlement** | SUCCESS, pays recipient | ✅ SUCCESS | [`62780ea4…04eb12e9`](https://stellar.expert/explorer/testnet/tx/62780ea454861453e351f4247ec3ff6d62c2f56cb0a65e043510270a04eb12e9) | 100000 → **99950** | 0 → **50** | `45be8d72…` → **`6511339d…f8f253a7`** |
-| **Forged proof** | revert on-chain | ✅ REVERTED `ProofInvalid #10` | [`21f51b19…79f4b1c1`](https://stellar.expert/explorer/testnet/tx/21f51b19a900dd766da6b88ae8cead053f42a8fe28b744e819c406d179f4b1c1) | 99950 (unchanged) | 50 (unchanged) | `6511339d…` (unchanged) |
-| **Replay proof** | revert on-chain | ✅ REVERTED `StaleStateRoot #9` | [`fdfcbb35…e842d51f9c`](https://stellar.expert/explorer/testnet/tx/fdfcbb355737282cd83f04cb496d79ae823c5efaaa111c550e7535e842d51f9c) | 99950 (unchanged) | 50 (unchanged) | `6511339d…` (unchanged) |
+| Contract initialized + funded | genesis root | OK | (init + mint) | 100000 | 0 | `45be8d72…cba264f1` |
+| **Compliant settle #1** | SUCCESS, pays recipient | ✅ SUCCESS | [`462d65ef…a634f27e`](https://stellar.expert/explorer/testnet/tx/462d65efbe64fd6b8166ca8c2d3e8ad02485e548dbaee6f67eb022b0a634f27e) | 100000 → **99950** | 0 → **50** | `45be8d72…` → `2cffefaa…` |
+| **Compliant settle #2** | SUCCESS, chains root | ✅ SUCCESS | [`2798ab54…e92b8c72`](https://stellar.expert/explorer/testnet/tx/2798ab54986751efbc5f1ab4aeb505cbf4c86a020d583fd28089af7ee92b8c72) | 99950 → **99900** | 50 → **100** | `2cffefaa…` → `0f8f7ece…` |
+| **Compliant settle #3** | SUCCESS, chains root | ✅ SUCCESS | [`f8156f96…0c9bc3c5`](https://stellar.expert/explorer/testnet/tx/f8156f9600a754dd380b9fa454272c16582d0fda609da95c8d66b0600c9bc3c5) | 99900 → **99850** | 100 → **150** | `0f8f7ece…` → `5cadb2d4…` |
+| **Forged proof** | revert on-chain | ✅ REVERTED `ProofInvalid #10` | [`903a71a2…bee19097`](https://stellar.expert/explorer/testnet/tx/903a71a2a4d14ccc47bd5cb6ade4b0a95b2eca1c66c5126e35637a25bee19097) | 99850 (unchanged) | 150 (unchanged) | `5cadb2d4…` (unchanged) |
+| **Replay proof** | revert on-chain | ✅ REVERTED `StaleStateRoot #9` | [`d766b9c0…861d1d39`](https://stellar.expert/explorer/testnet/tx/d766b9c061dd9c38b236529ba6e665dfd08dd4bcec9fa1812ad4fe3b861d1d39) | 99850 (unchanged) | 150 (unchanged) | `5cadb2d4…` (unchanged) |
 | Over-limit amount | no proof | ✅ witness fails | local `groth16.fullProve` error | — | — | — |
 | Non-allowlisted recipient | no proof | ✅ witness fails | local `groth16.fullProve` error | — | — | — |
 | Oracle re-mark / price breach | no proof | ✅ witness fails | local `groth16.fullProve` error | — | — | — |
 
-The compliant settlement moved exactly 50 USDW (raw) into the recipient and advanced
-the state root from genesis to `6511339d…`. The forged and replay transactions are
-**real, committed, explorer-visible testnet transactions that reverted** and moved
-nothing — open the links and check the result is `FAILED` with the contract error code.
+The three compliant settlements each moved exactly 50 USDW (raw) into the recipient (150 total)
+and walked the state root genesis → `2cffefaa…` → `0f8f7ece…` → `5cadb2d4…`. The forged and
+replay transactions are **real, committed, explorer-visible testnet transactions that reverted**
+and moved nothing — open the links and check the result is `FAILED` with the contract error code.
+Pass `N_SETTLE=N` to chain more (up to the mandate cap).
 
 The pre-chain rejections (over-limit amount, non-allowlisted recipient, oracle
 price-breach) produce **no transaction at all**: `snarkjs.groth16.fullProve` cannot
@@ -122,9 +148,9 @@ valid proof simply cannot exist.
 No keys required for reads. With the [Stellar CLI](https://developers.stellar.org/docs/tools/cli):
 
 ```bash
-C=CBOFK4I5LHP653B3YPBJEYSR5JE7F6NRYXW2KPFBWQPP6ATQHNBOLT7W
-T=CDA2EF72QUX4TZPMBD2D2D37QVXJK3RGGILIBMSEFMZQLR55FIH7P4XL
-R=GCWEVQJSSYMEEJW3NE4GNN3B7JSCZ3Z3ZI24AB3YFPIDYEL45GRLFGNL
+C=CA4F7XRMZVDL4WKPKJIKGJUMFPI5HBCX5OV6N5BCHEDPHWVH4SVK3NFE
+T=CBJ3ZUCZMLI5VSVFNHXAIWMYETEXKDLXH7UR7ZSF5WSL5OEPNQIACIQV
+R=GAXIYPH63NUKNMGDGTMEHW3CR7XBXB3NA4FM4B2FK35Q23JVF4I2OGLE
 
 # current state root and policy commitment
 stellar contract invoke --id $C --network testnet --source-account <any> -- current_state_root
@@ -172,21 +198,37 @@ Notes:
   Vercel serves them and in-browser proving works on the deployed site.
 - Visitors must install Freighter and set it to **Testnet**.
 
-### One-shot settlement and resetting
+### Chained settlements and resetting
 
-The bundled compliant proof extends the **genesis** book state, and the demo mandate
-(`maxPosition`, `peakEquity`, fixed oracle price) is calibrated so that **exactly one
-meaningful compliant settlement is provable per contract** — the private position starts
-at the equity cap and only grows, so no valid witness exists for a second settlement.
-This is the replay/risk protection working as designed.
+The agent's book evolves across **many** settlements. Each compliant proof extends the
+previous on-chain state root, so a viewer can click *Generate proof & settle* repeatedly
+and watch the position grow and the recipient get paid, settlement after settlement. The
+frontend steps through a precomputed, deterministically-chained sequence
+(`app/frontend/public/seq/`): on each click it reads the live on-chain root and proves the
+input that extends it. The demo ships **12** chained settlements — the agent's position
+climbs from the genesis book toward the private `maxPosition` cap.
 
-So on a hosted link, the **first** visitor's *Generate proof & settle* lands a real
-settlement; afterwards the UI detects that the on-chain root has advanced and shows a
-clear "already used" message **without** submitting a doomed transaction. Forged, replay,
-over-limit, and non-allowlisted attempts keep working for everyone.
+When the position reaches the mandate cap, no further compliant proof can exist (the
+position/drawdown limit working as designed), and the UI shows an "all settlements used"
+message **without** submitting a doomed transaction.
 
-To make *settle* available again (e.g. between demo recordings), re-provision a fresh
-genesis contract and redeploy:
+The other demos:
+
+- **Over-limit** and **non-allowlisted** (and the **oracle re-mark**) prove locally in the
+  browser and fail at witness generation, so they work for everyone, any time.
+- **Forged** and **replay** reuse the on-chain footprint of a *successful compliant
+  settlement from the same session*, so they land as real reverted transactions right after
+  any *Generate proof & settle*.
+
+To see the **full** chained + forged + replay sequence land on-chain at any time
+(it provisions a fresh contract every run), use the CLI driver instead of the hosted UI:
+
+```bash
+N_SETTLE=3 node app/scripts/sdk/drive.mjs   # fresh contract; prints real tx hashes + links
+```
+
+To reset the hosted demo to a fresh genesis contract (e.g. between recordings), re-provision
+and redeploy:
 
 ```bash
 npm install

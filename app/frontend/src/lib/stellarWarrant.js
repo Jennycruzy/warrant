@@ -1,8 +1,8 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { hexToBytes } from "./snarkHex.js";
 
-const rpcNamespace = StellarSdk.SorobanRpc || StellarSdk.rpc;
-const assembleTransaction = rpcNamespace.assembleTransaction || StellarSdk.assembleTransaction;
+const rpcNamespace = StellarSdk.rpc;
+const assembleTransaction = rpcNamespace.assembleTransaction;
 
 export const DEFAULT_NETWORK = "Test SDF Network ; September 2015";
 export const DEFAULT_RPC = "https://soroban-testnet.stellar.org";
