@@ -1,6 +1,6 @@
 :root {
-  color: #17211b;
-  background: #f4f1e8;
+  color: #18202b;
+  background: #f6f7f9;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -11,9 +11,7 @@ button, input, select { font: inherit; }
 main {
   min-height: 100vh;
   padding: 28px;
-  background:
-    radial-gradient(circle at 15% 12%, rgba(79, 127, 92, 0.22), transparent 30%),
-    linear-gradient(135deg, #f7f3ea 0%, #e8efe4 50%, #f4f1e8 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #eef3f6 46%, #f6f7f9 100%);
 }
 
 .topbar {
@@ -27,10 +25,10 @@ main {
 
 .eyebrow, .label {
   margin: 0 0 6px;
-  color: #4d6a58;
+  color: #3d6473;
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: .12em;
+  letter-spacing: .08em;
   text-transform: uppercase;
 }
 
@@ -52,12 +50,12 @@ h2 { font-size: 20px; }
   border-radius: 8px;
   background: rgba(255, 255, 255, .72);
   padding: 20px;
-  box-shadow: 0 16px 40px rgba(34, 49, 39, .08);
+  box-shadow: 0 16px 40px rgba(24, 32, 43, .08);
 }
 
-.secret { background: #eef4e9; }
-.chain { background: #eef0ed; }
-.action { background: #fffdf6; }
+.secret { background: #f2f6f4; }
+.chain { background: #eff3f8; }
+.action { background: #fffdfa; }
 
 dl {
   display: grid;
@@ -65,14 +63,15 @@ dl {
   gap: 10px 14px;
   margin: 20px 0;
 }
-dt { color: #5d6b61; }
+dt { color: #637081; }
 dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; overflow-wrap: anywhere; }
 
-.lock, .message, .muted, footer { color: #5b675f; }
+.lock, .message, .muted, footer { color: #5d6877; }
 
 label { display: grid; gap: 8px; margin-top: 18px; color: #354139; }
 input[type="range"] { width: 100%; accent-color: #2d6a4f; }
-select {
+select,
+input[type="number"] {
   min-height: 42px;
   border: 1px solid rgba(23, 33, 27, .2);
   border-radius: 8px;
@@ -80,18 +79,49 @@ select {
   padding: 0 12px;
 }
 
+.amountrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  gap: 10px;
+  align-items: center;
+}
+
+.runmeta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.runmeta span {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(24, 32, 43, .12);
+  border-radius: 8px;
+  background: #f3f7fb;
+  padding: 8px 10px;
+  color: #4e5b6b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.runmeta strong,
+.goodtext { color: #1f6f50; }
+.warntext { color: #a25b12; }
+
 .walletbox { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .netbadge {
   border-radius: 999px;
-  background: #b7dfc1;
-  color: #14331f;
+  background: #ccebd8;
+  color: #123522;
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 800;
 }
-.netbadge.warn { background: #f1b2a8; color: #5a1a12; }
+.netbadge.warn { background: #ffd5cc; color: #6d2116; }
 .connect { background: #2d6a4f; }
-.addr { background: #17211b; font-family: ui-monospace, Menlo, monospace; }
+.addr { background: #18202b; font-family: ui-monospace, Menlo, monospace; }
 
 .balances {
   max-width: 1180px;
@@ -107,15 +137,13 @@ select {
   padding: 14px 16px;
 }
 .balcard.refresh { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
-.baltitle { margin: 0 0 6px; color: #4d6a58; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.baltitle { margin: 0 0 6px; color: #3d6473; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .balval { margin: 0; font-size: 22px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
-.balsym { font-size: 13px; color: #4d6a58; }
+.balsym { font-size: 13px; color: #3d6473; }
 .balraw { margin: 4px 0 0; font-size: 11px; color: #7c8a80; font-family: ui-monospace, Menlo, monospace; }
 
 .fundrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; margin-top: 16px; }
-.fundrow input { min-height: 42px; border: 1px solid rgba(23, 33, 27, .2); border-radius: 8px; padding: 0 12px; }
 .fundrow button { white-space: nowrap; }
-.feedrow { grid-template-columns: auto auto 1fr auto; }
 .ts { font-size: 11px; color: #7c8a80; font-family: ui-monospace, Menlo, monospace; }
 
 .buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
@@ -139,15 +167,15 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .step, .pill {
   border-radius: 999px;
-  background: #e5e3da;
+  background: #e3e8ee;
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 800;
 }
-.step.active { background: #f3c969; }
-.step.good, .pill.settled { background: #b7dfc1; }
-.step.bad, .pill.rejected { background: #f1b2a8; }
-.pill.blocked { background: #f3d899; }
+.step.active { background: #ffd56b; }
+.step.good, .pill.settled { background: #ccebd8; }
+.step.bad, .pill.rejected { background: #ffd5cc; }
+.pill.blocked { background: #ffe2a8; }
 
 .observer, .feed {
   max-width: 1180px;
@@ -158,20 +186,20 @@ pre {
   overflow: auto;
   padding: 14px;
   border-radius: 8px;
-  background: #17211b;
+  background: #18202b;
   color: #dce8df;
   font-size: 12px;
 }
 
 .feedrow {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 10px 0;
   border-top: 1px solid rgba(23, 33, 27, .12);
 }
-a { color: #1f513b; font-weight: 800; }
+a { color: #1f5f88; font-weight: 800; }
 footer { max-width: 1180px; margin: 18px auto 0; font-size: 13px; }
 footer p { margin: 0 0 8px; }
 footer .verify { color: #17211b; font-weight: 700; margin-top: 12px; }
@@ -179,7 +207,7 @@ footer code {
   display: block;
   margin-top: 6px;
   padding: 10px 12px;
-  background: #17211b;
+  background: #18202b;
   color: #7ee0b0;
   border-radius: 8px;
   font-size: 12px;
@@ -194,4 +222,14 @@ footer code {
   .grid { grid-template-columns: 1fr; }
   .buttons { grid-template-columns: 1fr; }
   .balances { grid-template-columns: 1fr 1fr; }
+  .runmeta { grid-template-columns: 1fr; }
+  .feedrow { grid-template-columns: auto 1fr; }
+  .feedrow .pill,
+  .feedrow a { justify-self: start; }
+}
+
+@media (max-width: 560px) {
+  .balances { grid-template-columns: 1fr; }
+  .fundrow,
+  .amountrow { grid-template-columns: 1fr; }
 }
