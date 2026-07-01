@@ -46,5 +46,5 @@ and a proof.
 
 The primitive is not limited to one workflow. Autonomous agents are the frontier version:
 an agent may propose payments, but the custody contract releases funds only when the proof
-shows the action respects the private delegation terms and current state.
-
+binds the private delegation terms, approved-recipient identity, authenticated valuation,
+and current state.

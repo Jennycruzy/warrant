@@ -84,8 +84,9 @@ Real testnet run (XLM/USD `17764414800342` ≈ $0.1776):
 
 The contract also keeps a self-signed (Ed25519) valuation path (`settle_with_price`) for the
 deterministic, replayable UI demo, whose fixed reference price keeps the chained settlement
-sequence reproducible. Both paths bind the price as a verified public signal; only the
-*source* differs (live Reflector vs an admin-signed report).
+sequence reproducible. This is a demo choice, not a missing oracle integration: both paths
+bind the price as a verified public signal; only the *source* differs (live Reflector vs an
+admin-signed report).
 
 ## Toolchain
 
@@ -312,7 +313,7 @@ disbursement, and regulated counterparties.
 - `npm run audit:secrets` fails the build if any browser secret-signing pattern or
   fake transaction hash reappears in `app/frontend/src`.
 
-## Recipient binding (honest scope)
+## Recipient binding (resolved)
 
 The address-bound path removes the recipient-id indirection. The circuit exposes
 `recipientType`, `recipientHi`, and `recipientLo` as public signals, where type is
@@ -332,22 +333,40 @@ There is no `register_recipient` entrypoint on the new contract. The exported fu
 list is `init`, `set_vk`, `set_oracle`, `fund`, `settle`, `settle_with_price`,
 `settle_with_reflector`, `current_state_root`, `policy_commitment`, and `get_token`.
 
-## Limitations
+## Production scope
 
-- This is **testnet**, with demo-sized delegation terms and demo proving artifacts (the trusted
-  setup here is a demo ceremony, not a production MPC).
-- Recipient identity is now bound as `(type, key bytes)` in the proof and committed
-  approved-recipient data. The contract enforces exact type-and-byte equality and computes no Poseidon.
-- The live-oracle path reads the **real Reflector** SEP-40 feed on-chain; the alternate
-  `settle_with_price` path uses an admin-signed price and is what the deterministic UI demo
-  uses. A live price moves between rounds, so the oracle-priced demo settles from a
-  price-independent genesis (position 0) within one Reflector update round.
-- Production use needs audited circuits and contracts, a real trusted-setup ceremony,
-  and hardened key management.
+This repository is a working testnet build, not a production deployment for real funds.
+The remaining limits are about deployment maturity, not missing core mechanics.
+
+Complete in this build:
+
+- **Recipient binding is fixed.** Recipient identity is bound as `(type, key bytes)` in
+  the proof and committed approved-recipient data. The contract enforces exact type-and-byte
+  equality and computes no Poseidon.
+- **The live-oracle path exists and is proven on-chain.** `settle_with_reflector` reads the
+  real Reflector SEP-40 feed on Stellar testnet and rejects proofs built against a different
+  price.
+- **The UI path is deterministic by design.** The browser demo uses `settle_with_price`
+  with an admin-signed reference price so recordings and chained payments are repeatable.
+  It exercises the same proof, recipient-binding, state-root, and token-release checks.
+- **The build uses real artifacts.** The repo includes real circom circuits, trusted setup
+  outputs, witnesses, proofs, Soroban contracts, wallet-signed transactions, and testnet
+  explorer evidence.
+
+Still demo-scoped:
+
+- **Testnet only.** The deployed custody contract, USDW token, recipients, and explorer
+  evidence are on Stellar testnet.
+- **Demo-sized terms and proving artifacts.** The committed limits, balances, and proving
+  keys are sized for a public demo, not operational treasury limits.
+- **Demo trusted setup.** The setup is real, but it is not a production multi-party ceremony.
+- **No production audit claim.** Mainnet use would require independent circuit and contract
+  audits, a production trusted-setup process, operational monitoring, and hardened key
+  management.
 
 ## Nothing is mocked
 
-Every artifact in this project is real: real circom compilation, a real trusted setup,
+Every artifact in this project is real: real circom compilation, a real demo trusted setup,
 real witnesses, real proofs, real testnet contracts, real wallet-signed transactions,
 and real on-chain reads. Where a result is claimed, it is backed by a testnet transaction
 hash or an on-chain return value.
