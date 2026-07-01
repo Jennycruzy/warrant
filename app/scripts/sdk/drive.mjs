@@ -24,7 +24,7 @@ import {
   scBytes, scBytesN, scU64, scAddr, explorerTx, explorerC,
 } from "./chain.mjs";
 import {
-  proveValid, proveSeq, getVkHex, makeKeys, fundKeys, deployStablecoin,
+  proveSeq, getVkHex, makeKeys, fundKeys, deployStablecoin,
   trustline, deployWarrant, configureWarrant, ORACLE,
 } from "./provision.mjs";
 import { publicToHex } from "./encode.mjs";
@@ -162,7 +162,7 @@ const replay = await submitWithFootprint(settleOp(v.proofHex, v.publicHex), subm
 console.log(`  REPLAY ${replay.status === "FAILED" ? "✅ REVERTED" : "❌ " + replay.status}: ${explorerTx(replay.hash)}`);
 console.log("    reason:", replay.status === "FAILED" ? await failReason(replay.hash) : "(landed unexpectedly)");
 
-const end = await waitForState(CID, TOKEN, RECIP, (s) => true, 1);
+const end = await waitForState(CID, TOKEN, RECIP, () => true, 1);
 const untouched = end.root === after.root && end.cbal === after.cbal && end.rbal === after.rbal;
 console.log(`  custody=${end.cbal} recipient=${end.rbal} root=${end.root.slice(0, 16)}…`);
 console.log(`  adversarial txs moved nothing: ${untouched ? "VERIFIED ✅" : "STATE CHANGED ❌"}`);

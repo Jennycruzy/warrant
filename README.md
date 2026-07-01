@@ -207,9 +207,9 @@ npm run dev      # open the printed URL, install Freighter, set it to Testnet
 ```
 
 Connect the wallet, then click **Generate proof & settle**. The current demo proves and
-settles first to an account recipient and then to a contract recipient. The forged/replay,
-redirect, and type-confusion buttons submit real reverting transactions. Try over-limit /
-non-allowlisted to see the proof fail before any transaction is built.
+settles the amount and allowlisted recipient currently selected in the UI. The forged/replay,
+redirect, and type-confusion buttons submit real reverting transactions. Try over-limit,
+over-position, or non-allowlisted settings to see the proof fail before any transaction is built.
 
 ## Deploy to Vercel
 
@@ -225,7 +225,7 @@ Notes:
 - **No env vars are required.** The app reads its public config from
   `app/frontend/public/demo-config.json`. Do **not** add any `VITE_*` secret — Vite bundles
   those into browser code.
-- The circuit (`.wasm`, 2.7 MB) and proving key (`.zkey`, 2.9 MB) are committed to git, so
+- The address-bound circuit (`.wasm`, 2.7 MB) and proving key (`.zkey`, 3.2 MB) are committed to git, so
   Vercel serves them and in-browser proving works on the deployed site.
 - Visitors must install Freighter and set it to **Testnet**.
 
@@ -233,14 +233,15 @@ Notes:
 
 The agent's book evolves across settlements. Each compliant proof extends the
 previous on-chain state root, so a viewer can click *Generate proof & settle* and
-watch the position grow and the selected recipient get paid. The
-frontend steps through a precomputed, deterministically-chained sequence
-(`app/frontend/public/seq/`): on each click it reads the live on-chain root and proves the
-input that extends it. The address-bound demo ships **2** chained settlements: account
-recipient first, contract recipient second.
+watch the position grow and the selected recipient get paid. The frontend reads the live
+on-chain root, matches it to the committed address-bound control table
+(`app/frontend/public/controls/manifest.json`), then builds the witness input from the
+viewer-selected amount, recipient identity, and private book state for that root. It still
+runs real `snarkjs.groth16.fullProve` in the browser; the control table contains roots and
+Merkle paths, not proofs.
 
 When the position reaches the mandate cap, no further compliant proof can exist (the
-position/drawdown limit working as designed), and the UI shows an "all settlements used"
+position/drawdown limit working as designed), and the UI shows a witness-generation refusal
 message **without** submitting a doomed transaction.
 
 The other demos:

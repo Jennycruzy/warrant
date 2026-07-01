@@ -9,6 +9,7 @@
     "demo:reprovision": "node app/scripts/sdk/setup_demo.mjs app/frontend/public/demo-config.json .keys.json",
     "demo:reflector": "node app/scripts/sdk/drive_reflector.mjs",
     "audit:frontend": "node app/scripts/audit_frontend.mjs",
+    "lint": "eslint app/scripts app/frontend/src",
     "audit:secrets": "node app/scripts/audit_secrets.mjs",
     "audit:all": "bash app/scripts/audit_all.sh",
     "test": "node app/scripts/audit_secrets.mjs"
@@ -21,5 +22,13 @@
     "@stellar/stellar-sdk": "^16.0.1",
     "circomlib": "^2.0.5",
     "snarkjs": "^0.7.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "globals": "^17.7.0"
+  },
+  "overrides": {
+    "bfj": "9.1.3"
   }
 }

@@ -76,7 +76,7 @@ function Balance({ title, raw, decimals, symbol, loading }) {
 
 export default function App() {
   const [config, setConfig] = useState(null);
-  const [seq, setSeq] = useState(null); // chained-settlement manifest
+  const [controls, setControls] = useState(null);
   const [chain, setChain] = useState({});
   const [meta, setMeta] = useState({});
   const [balances, setBalances] = useState({ wallet: null, contract: null, recipient: null });
@@ -101,7 +101,6 @@ export default function App() {
 
   const network = DEFAULT_NETWORK;
   const rpcUrl = config?.rpcUrl || DEFAULT_RPC;
-  const tokenId = config?.token;
   const addressBound = config?.recipientBinding === "address";
   const circuitWasm = config?.circuitWasm || "/circuits/mandate_oracle_allow.wasm";
   const provingKey = config?.provingKey || "/proving/mandate_oracle_allow_final.zkey";
@@ -116,20 +115,46 @@ export default function App() {
   const symbol = meta.symbol || config?.tokenCode || "USDW";
   const decimals = meta.decimals ?? 7;
   const maxPerTx = Number(secretMandate.maxPerTx);
-  const sequenceAmount = Number(seq?.amount ?? 50);
-  const sequenceCount = seq?.count ?? 0;
-  const nextPosition = seq?.settlements?.[0]?.nextPosition;
-  const amountMatchesSequence = amount === sequenceAmount;
+  const maxPosition = Number(secretMandate.maxPosition);
+  const controlStateByRoot = useMemo(() => {
+    const map = new Map();
+    for (const state of controls?.states || []) {
+      map.set(String(state.rootHex).toLowerCase(), state);
+    }
+    return map;
+  }, [controls]);
+  const controlStateByPosition = useMemo(() => {
+    const map = new Map();
+    for (const state of controls?.states || []) {
+      map.set(String(state.position), state);
+    }
+    return map;
+  }, [controls]);
+  const controlRecipientById = useMemo(() => {
+    const map = new Map();
+    for (const r of controls?.recipients || []) {
+      map.set(String(r.id), r);
+    }
+    return map;
+  }, [controls]);
+  const currentRoot = (chain.root || config?.genesisRootHex || "").toLowerCase();
+  const liveControlState = currentRoot ? controlStateByRoot.get(currentRoot) : null;
+  const livePosition = liveControlState?.position || privateBook.position;
+  const intendedNextPosition = liveControlState
+    ? String(BigInt(liveControlState.position) + BigInt(Math.max(0, amount)))
+    : "";
+  const amountIsCompliant = amount <= maxPerTx &&
+    (!liveControlState || BigInt(liveControlState.position) + BigInt(amount) <= BigInt(maxPosition));
 
   useEffect(() => {
     fetch("/demo-config.json")
       .then((r) => (r.ok ? r.json() : null))
       .then(setConfig)
       .catch(() => setConfig(null));
-    fetch("/seq/manifest.json")
+    fetch("/controls/manifest.json")
       .then((r) => (r.ok ? r.json() : null))
-      .then(setSeq)
-      .catch(() => setSeq(null));
+      .then(setControls)
+      .catch(() => setControls(null));
   }, []);
 
   // Restore an already-authorized wallet session on load.
@@ -177,10 +202,14 @@ export default function App() {
   const selectedScenario = useMemo(() => {
     if (addressBound ? !selectedRecipient : recipient !== "0") return "nonAllow";
     if (amount > maxPerTx) return "overLimit";
-    if (!seq?.settlements?.length) return "sequenceUnavailable";
-    if (amount !== sequenceAmount) return "unsupportedAmount";
+    if (!controls?.states?.length) return "controlsUnavailable";
+    if (!liveControlState) return "stateUnavailable";
+    if (BigInt(liveControlState.position) + BigInt(amount) > BigInt(maxPosition)) return "overMaxPosition";
+    if (!controlStateByPosition.has(String(BigInt(liveControlState.position) + BigInt(amount)))) {
+      return "stateUnavailable";
+    }
     return "valid";
-  }, [addressBound, amount, maxPerTx, recipient, selectedRecipient, seq?.settlements?.length, sequenceAmount]);
+  }, [addressBound, amount, controlStateByPosition, controls?.states?.length, liveControlState, maxPerTx, maxPosition, recipient, selectedRecipient]);
 
   function appendFeed(row) {
     setFeed((rows) => [{ id: Date.now(), ts: new Date().toLocaleTimeString(), ...row }, ...rows].slice(0, 10));
@@ -264,38 +293,88 @@ export default function App() {
     return { input, proofHex: proofToHex(proof), publicHex: publicSignalsToHex(publicSignals), publicSignals };
   }
 
-  function recipientForEntry(entry) {
-    if (!addressBound) return null;
-    return recipientOptions.find((r) => String(r.id) === String(entry.recipientId ?? entry.recipient));
+  function buildControlInput({ state, recipientOption, amountValue, allowOverMaxPosition = false }) {
+    if (!controls) {
+      throw new Error("Address-bound control manifest is not loaded.");
+    }
+    if (!state) {
+      throw new Error("The live state root is not in the committed control manifest.");
+    }
+    if (!recipientOption) {
+      throw new Error("The selected recipient is not in the committed private allowlist.");
+    }
+    const controlRecipient = controlRecipientById.get(String(recipientOption.id));
+    if (!controlRecipient) {
+      throw new Error("The selected recipient has no committed Merkle path.");
+    }
+    const amt = BigInt(amountValue);
+    const nextPositionValue = BigInt(state.position) + amt;
+    if (!allowOverMaxPosition && nextPositionValue > BigInt(controls.mandate.maxPosition)) {
+      throw new Error("The selected amount would exceed the hidden max position.");
+    }
+    const nextState = controlStateByPosition.get(nextPositionValue.toString());
+    if (!nextState) {
+      throw new Error("No precomputed state root exists for the selected next position.");
+    }
+    const input = {
+      policyCommitment: controls.policyCommitment,
+      prevStateRoot: state.root,
+      nextStateRoot: nextState.root,
+      amount: amt.toString(),
+      recipientType: controlRecipient.recipientType,
+      recipientHi: controlRecipient.recipientHi,
+      recipientLo: controlRecipient.recipientLo,
+      price: controls.price,
+      maxPerTx: controls.mandate.maxPerTx,
+      maxPosition: controls.mandate.maxPosition,
+      drawdownLimit: controls.mandate.drawdownLimit,
+      allowlistRoot: controls.allowlistRoot,
+      prevPosition: state.position,
+      peakEquity: state.peakEquity,
+      pathElements: controlRecipient.pathElements,
+      pathIndices: controlRecipient.pathIndices,
+    };
+    return { input, recipientAddress: recipientOption.address, state, nextState };
   }
 
-  async function proveSequenceEntry(entry) {
+  async function proveControlInput({ state, recipientOption, amountValue, allowOverMaxPosition = false }) {
     setStatus("witness");
-    const input = await fetch(`/${entry.file}`).then((r) => r.json());
+    const built = buildControlInput({ state, recipientOption, amountValue, allowOverMaxPosition });
     setStatus("proving");
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-      input,
+      built.input,
       circuitWasm,
       provingKey
     );
-    const entryRecipient = recipientForEntry(entry);
-    const recipientAddress = addressBound ? entryRecipient?.address : undefined;
-    if (addressBound && !recipientAddress) {
-      throw new Error("Selected sequence entry does not have a configured recipient address.");
-    }
-    return { proofHex: proofToHex(proof), publicHex: publicSignalsToHex(publicSignals), publicSignals, recipientAddress };
+    return {
+      ...built,
+      proofHex: proofToHex(proof),
+      publicHex: publicSignalsToHex(publicSignals),
+      publicSignals,
+    };
   }
 
-  async function prepareCurrentAnchor({ purpose, entryPredicate = () => true }) {
+  function anchorAmountForState(state, requested = amount) {
+    const remaining = BigInt(controls?.mandate?.maxPosition || 0) - BigInt(state.position);
+    const capped = BigInt(Math.max(1, Math.min(Number(controls?.mandate?.maxPerTx || 1), requested)));
+    if (remaining <= 0n) throw new Error("The live state has reached the hidden max position.");
+    return (remaining < capped ? remaining : capped).toString();
+  }
+
+  async function prepareCurrentAnchor({ purpose, recipientOption = selectedRecipient, amountOverride }) {
     setMessage(`Generating a current-root proof for ${purpose}.`);
     const live = await readContractState({ rpcUrl, contractId: config.contractId });
     setChain(live);
     const liveRoot = (live.root || "").toLowerCase();
-    const entry = seq?.settlements?.find((s) => s.prevRootHex.toLowerCase() === liveRoot && entryPredicate(s));
-    if (!entry) {
-      throw new Error(`No current-root proof is available for ${purpose}. Reset the demo or use the recipient whose next sequence entry matches the live root.`);
+    const state = controlStateByRoot.get(liveRoot);
+    if (!state) {
+      throw new Error(`No current-root proof is available for ${purpose}. Reset the demo to a known root.`);
     }
-    const result = await proveSequenceEntry(entry);
+    const result = await proveControlInput({
+      state,
+      recipientOption,
+      amountValue: amountOverride || anchorAmountForState(state),
+    });
     setStatus("simulating");
     setMessage(`Borrowing Soroban resources for ${purpose}; no valid settlement is submitted.`);
     const borrowed = await borrowSettleFootprint({
@@ -309,7 +388,7 @@ export default function App() {
     setPublicHex(result.publicHex);
     setLastProof(result);
     setFootprint(borrowed);
-    return { ...result, entry, footprint: borrowed };
+    return { ...result, footprint: borrowed };
   }
 
   async function onSettle() {
@@ -321,34 +400,27 @@ export default function App() {
       if (scenario !== "valid") {
         if (scenario === "overLimit" || scenario === "nonAllow") {
           await proveScenario(scenario);
+        } else if (scenario === "overMaxPosition") {
+          const live = await readContractState({ rpcUrl, contractId: config.contractId });
+          setChain(live);
+          await proveControlInput({
+            state: controlStateByRoot.get((live.root || "").toLowerCase()),
+            recipientOption: selectedRecipient,
+            amountValue: amount,
+            allowOverMaxPosition: true,
+          });
         }
         throw new Error("unexpectedly produced a proof for a blocked action");
       }
-      // Chained settlements: each precomputed input extends the previous one's
-      // state root, so the SAME contract accepts many compliant settlements in a
-      // row. Match the current on-chain root to the input that extends it; if none
-      // matches, the agent has reached the mandate cap (no further proof exists).
       const live = await readContractState({ rpcUrl, contractId: config.contractId });
       setChain(live);
       const liveRoot = (live.root || "").toLowerCase();
-      const entry = seq?.settlements?.find((s) => {
-        const rootMatches = s.prevRootHex.toLowerCase() === liveRoot;
-        if (!addressBound) return rootMatches;
-        return rootMatches && String(s.recipientId ?? s.recipient) === String(recipient);
-      });
-      if (!entry) {
-        setStatus("blocked");
-        appendFeed({ kind: "blocked", text: "All chained settlements used on this deployment" });
-        setMessage(
-          `All ${seq?.count ?? "demo"} compliant settlements for this deployment have been performed — the agent's position has reached the private mandate cap, so no further compliant proof exists (the position/drawdown limit working as designed). Forged, replay, over-limit, and non-allowlisted attempts still work. Operator: run \`node app/scripts/sdk/setup_addr_demo.mjs\` to mint a fresh contract.`
-        );
-        return;
-      }
-      const result = await proveSequenceEntry(entry);
+      const state = controlStateByRoot.get(liveRoot);
+      const result = await proveControlInput({ state, recipientOption: selectedRecipient, amountValue: amount });
       setProofHex(result.proofHex);
       setPublicHex(result.publicHex);
       setStatus("submitting");
-      setMessage(`Settlement #${entry.index} of ${seq.count} — proof generated, approve it in your wallet.`);
+      setMessage(`Proof generated for ${amount} raw ${symbol}; approve the settlement in your wallet.`);
       const sent = await settleWithPrice({
         rpcUrl, networkPassphrase: network, sourcePublicKey: wallet, signXdr,
         contractId: config.contractId,
@@ -359,9 +431,9 @@ export default function App() {
       setStatus("settled");
       setLastProof(result);
       setFootprint(sent.footprint);
-      appendFeed({ kind: "settled", text: `Compliant settlement #${entry.index} of ${seq.count} paid recipient`, hash: sent.hash });
-      const remaining = seq.count - entry.index;
-      setMessage(`Settlement #${entry.index} of ${seq.count} on-chain — state root advanced and the recipient was paid.${remaining > 0 ? ` ${remaining} more compliant settlement${remaining === 1 ? "" : "s"} can be chained — click again.` : " The agent has now reached the mandate cap."} Forged/replay attempts land as real reverted txs.`);
+      appendFeed({ kind: "settled", text: `Compliant settlement paid ${amount} raw ${symbol}`, hash: sent.hash });
+      const remaining = BigInt(controls.mandate.maxPosition) - BigInt(result.nextState.position);
+      setMessage(`Settlement landed on-chain — state root advanced to position ${result.nextState.position} and the recipient was paid.${remaining > 0n ? ` ${remaining} raw position remains under the private cap.` : " The agent has now reached the mandate cap."} Forged/replay attempts land as real reverted txs.`);
       setChain(await readContractState({ rpcUrl, contractId: config.contractId }));
       await refreshBalances();
     } catch (err) {
@@ -441,9 +513,13 @@ export default function App() {
     if (!(await requireWallet())) return;
     setBusy(true);
     try {
+      const accountOption = recipientOptions.find((r) => String(r.type) === "0");
+      if (!accountOption) {
+        throw new Error("No account recipient is configured for redirect testing.");
+      }
       const anchor = await prepareCurrentAnchor({
         purpose: "a redirect attempt",
-        entryPredicate: (entry) => String(recipientForEntry(entry)?.type) === "0",
+        recipientOption: accountOption,
       });
       await submitAdversarial({
         kind: "redirected recipient", describe: "Redirect", expected: "RecipientMismatch #18",
@@ -555,11 +631,11 @@ export default function App() {
           <p className="label">Action</p>
           <h2>Try to move {symbol}</h2>
           <div className="runmeta">
-            <span>Sequence amount <strong>{sequenceAmount || "—"}</strong> raw</span>
-            <span>{sequenceCount || "—"} linked proofs</span>
-            <span>{nextPosition ? `Next position ${nextPosition}` : "Root matched live"}</span>
+            <span>Max per tx <strong>{secretMandate.maxPerTx}</strong> raw</span>
+            <span>Live position <strong>{livePosition || "—"}</strong></span>
+            <span>{intendedNextPosition ? `Next position ${intendedNextPosition}` : "Root matched live"}</span>
           </div>
-          <label>Attempt amount <strong className={amountMatchesSequence ? "goodtext" : "warntext"}>{amount}</strong>
+          <label>Attempt amount <strong className={amountIsCompliant ? "goodtext" : "warntext"}>{amount}</strong>
             <div className="amountrow">
               <input type="range" min="1" max="160" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
               <input
@@ -568,7 +644,7 @@ export default function App() {
                 max="160"
                 step="1"
                 value={amount}
-                onChange={(e) => setAmount(clampInteger(e.target.value, 1, 160, sequenceAmount || 50))}
+                onChange={(e) => setAmount(clampInteger(e.target.value, 1, 160, 10))}
               />
             </div>
           </label>
@@ -650,7 +726,7 @@ export default function App() {
       <footer>
         <p>
           No mocks: proofs are generated with snarkjs in this browser, every on-chain action is signed by your
-          connected Stellar wallet, and this UI uses the committed fixed-price proof sequence shipped with the build.
+          connected Stellar wallet, and this UI builds the witness from the selected amount, recipient, and live root.
           Compliant settlements pay {symbol} on Stellar testnet, while forged or replayed proofs are submitted and
           <strong> revert on-chain</strong> with real explorer links.
         </p>
@@ -663,8 +739,9 @@ export default function App() {
 
 function reasonFor(scenario) {
   if (scenario === "overLimit") return "Stopped before chain: witness/proof generation failed — amount exceeds the hidden maxPerTx. No transaction was submitted.";
+  if (scenario === "overMaxPosition") return "Stopped before chain: witness/proof generation failed — the move would exceed the hidden maxPosition. No transaction was submitted.";
   if (scenario === "nonAllow") return "Stopped before chain: witness/proof generation failed — recipient is not in the committed private allowlist. No transaction was submitted.";
-  if (scenario === "unsupportedAmount") return "Stopped before chain: this deployment ships a precomputed compliant sequence for the configured raw amount. Pick that amount for the compliant path, or exceed the limit to test witness rejection.";
-  if (scenario === "sequenceUnavailable") return "Stopped before chain: the committed settlement sequence is not loaded, so the UI cannot select a proof input that extends the live root.";
+  if (scenario === "controlsUnavailable") return "Stopped before chain: the address-bound control manifest is not loaded, so the UI cannot build a witness input.";
+  if (scenario === "stateUnavailable") return "Stopped before chain: this live root is outside the committed demo control table. Reset the demo to a known root.";
   return "No proof can exist.";
 }

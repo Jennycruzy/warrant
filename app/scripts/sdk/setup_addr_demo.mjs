@@ -9,6 +9,7 @@ import {
 } from "./chain.mjs";
 import { vkToHex } from "./encode.mjs";
 import { addressIdentity } from "../address_identity.mjs";
+import { buildAddressControls } from "../addr_controls.mjs";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
@@ -210,6 +211,7 @@ await mint(tokenId, admin, custody.contractId, FUND);
 
 fs.mkdirSync(pub("circuits"), { recursive: true });
 fs.mkdirSync(pub("proving"), { recursive: true });
+fs.rmSync(pub("seq"), { recursive: true, force: true });
 fs.copyFileSync(ART.wasm, pub("circuits/mandate_oracle_allow_addr.wasm"));
 fs.copyFileSync(ART.zkey, pub("proving/mandate_oracle_allow_addr_final.zkey"));
 writeInput("valid.input.json", seq1);
@@ -230,7 +232,7 @@ writeJson(pub("seq/manifest.json"), {
     { index: 2, file: "seq/settle_02.input.json", amount: AMOUNT, recipientId: "1", recipient: recipients[1].address, prevRootHex: seq2.meta.prevRootHex, nextRootHex: seq2.meta.nextRootHex, prevPosition: seq1.meta.nextPosition, nextPosition: seq2.meta.nextPosition },
   ],
 });
-writeJson(pub("demo-config.json"), {
+const demoConfig = {
   rpcUrl: "https://soroban-testnet.stellar.org",
   contractId: custody.contractId,
   token: tokenId,
@@ -255,7 +257,9 @@ writeJson(pub("demo-config.json"), {
   } : null,
   mandate: MANDATE,
   book: START,
-});
+};
+writeJson(pub("demo-config.json"), demoConfig);
+writeJson(pub("controls/manifest.json"), await buildAddressControls(demoConfig));
 
 console.log("warrant_addr wasm :", explorerTx(uploaded.uploadHash), uploaded.hashHex);
 console.log("custody contract  :", explorerC(custody.contractId));
