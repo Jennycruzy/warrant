@@ -582,13 +582,12 @@ export default function App() {
   }
 
   return (
-    <main>
-      <section className="topbar">
-        <div>
-          <p className="eyebrow">Custody an autonomous agent cannot break</p>
-          <h1>WARRANT</h1>
-          <p className="muted">A ZK-enforced private mandate for agents that hold funds. The contract releases {symbol} only after a proof binds the private witness to the public commitment, live root, amount, recipient identity, and signed price.</p>
-        </div>
+    <main id="top">
+      <nav className="nav">
+        <a className="brand" href="#top">
+          <span className="brandmark" aria-hidden="true" />
+          WARRANT
+        </a>
         <div className="walletbox">
           <span className={`netbadge ${onTestnet ? "" : "warn"}`}>{onTestnet ? "Stellar Testnet" : "Wrong network"}</span>
           {wallet ? (
@@ -601,9 +600,48 @@ export default function App() {
           )}
           <button className="toggle" onClick={() => setObserver((v) => !v)}>{observer ? "Hide observer" : "Observer view"}</button>
         </div>
-      </section>
+      </nav>
 
-      <section className="balances">
+      <header className="hero">
+        <div className="hero-grid" aria-hidden="true" />
+        <div className="hero-glow" aria-hidden="true" />
+        <div className="hero-inner">
+          <p className="eyebrow">Custody an autonomous agent cannot break</p>
+          <h1 className="hero-title">
+            Private mandate.
+            <span className="hero-title-accent">Public settlement.</span>
+          </h1>
+          <p className="hero-tag">
+            A ZK-enforced leash for agents that hold funds. The contract releases {symbol} only
+            after a proof binds the private witness to the public commitment, live root, amount,
+            recipient identity, and signed price. No valid proof, no movement — enforced by
+            mathematics, not trust.
+          </p>
+          <div className="claims">
+            <div className="claim">
+              <span className="claim-k">01</span>
+              <p className="claim-t">Physically incapable</p>
+              <p className="claim-d">There is no code path that releases funds without a state-extending proof.</p>
+            </div>
+            <div className="claim">
+              <span className="claim-k">02</span>
+              <p className="claim-t">Mandate stays hidden</p>
+              <p className="claim-d">Limits, allowlist, and book live off-chain. Only commitments and roots are public.</p>
+            </div>
+            <div className="claim">
+              <span className="claim-k">03</span>
+              <p className="claim-t">Groth16 on BLS12-381</p>
+              <p className="claim-d">Verified in-browser with snarkjs, settled by native Stellar pairing checks.</p>
+            </div>
+          </div>
+          <div className="hero-cta">
+            <a className="cta-primary" href="#demo">Enter the live demo</a>
+            {!wallet && <button className="cta-ghost" onClick={onConnect}>Connect a testnet wallet</button>}
+          </div>
+        </div>
+      </header>
+
+      <section id="demo" className="balances">
         <Balance title="Connected wallet" raw={balances.wallet} decimals={decimals} symbol={symbol} loading={balLoading} />
         <Balance title="Warrant contract" raw={balances.contract} decimals={decimals} symbol={symbol} loading={balLoading} />
         <Balance title={selectedRecipient?.label || "Selected recipient"} raw={balances.recipient} decimals={decimals} symbol={symbol} loading={balLoading} />

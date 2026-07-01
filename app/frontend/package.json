@@ -9,6 +9,9 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
     "@stellar/freighter-api": "^4.1.0",
     "@stellar/stellar-sdk": "^16.0.1",
     "react": "^18.3.1",
