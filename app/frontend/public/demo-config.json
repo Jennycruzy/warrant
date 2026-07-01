@@ -1,16 +1,39 @@
 {
   "rpcUrl": "https://soroban-testnet.stellar.org",
-  "contractId": "CA4F7XRMZVDL4WKPKJIKGJUMFPI5HBCX5OV6N5BCHEDPHWVH4SVK3NFE",
-  "token": "CBJ3ZUCZMLI5VSVFNHXAIWMYETEXKDLXH7UR7ZSF5WSL5OEPNQIACIQV",
+  "contractId": "CCGUAXJ2SAGCQMVVJAL67CLQ735R2YOUFIBJMLCOBAMG2UNN4HVNMSSY",
+  "token": "CCSRBXPDLPRYRAHDKR3HUJZJRALRSJK64CUBVQ4VNY7SIVOGU22QWXJX",
   "tokenCode": "USDW",
-  "recipient": "GAXIYPH63NUKNMGDGTMEHW3CR7XBXB3NA4FM4B2FK35Q23JVF4I2OGLE",
+  "recipientBinding": "address",
+  "recipient": "GDV5O5MUNR3HLSWT2DPWIQBG6NE7ZIKPY563BVE4Z43GM6GBUCTQ7JLZ",
+  "recipients": [
+    {
+      "id": "0",
+      "label": "Account recipient",
+      "address": "GDV5O5MUNR3HLSWT2DPWIQBG6NE7ZIKPY563BVE4Z43GM6GBUCTQ7JLZ",
+      "type": 0
+    },
+    {
+      "id": "1",
+      "label": "Contract recipient",
+      "address": "CBTDVUCVGRWA2QMSOIZ4S5LIZYJ5MKOZN2F6FCE3I57CA2B3PRTGBNVQ",
+      "type": 1
+    }
+  ],
+  "redirectRecipient": "GDSM6CY5FOBTSIO6C6USAXCFN5P4FTDPPN2MF4U6POWRH3DV7H6UQ5BX",
   "oraclePubKey": "eaee897380a52a6b18205c33d79ed68e26f23ab85f46a9f74e044a989411af0b",
   "signatureHex": "9ad495a06680cc8b1fc16981dfeba9a1d4acc87f972ce5b135589c7feeb03aaf31d60c600f85a82e754e1780be689968b07c7cbaac43d035cb3beb2000821200",
   "messageHex": "000000000000000a000000006b49d200",
-  "commitmentHex": "2e3da43f5d59ed1757ae427481b609988aca187b7075f43733225a7590893a87",
+  "commitmentHex": "45e0b8cb7dca9bb70f91861d020e3c9978de9373baaecd23b833fbf20dabd28d",
   "genesisRootHex": "45be8d721eb60367b8485489cb4668c6690bc8571750ade6ba195e97cba264f1",
   "price": "10",
   "timestamp": "1800000000",
+  "circuitWasm": "/circuits/mandate_oracle_allow_addr.wasm",
+  "provingKey": "/proving/mandate_oracle_allow_addr_final.zkey",
+  "rollback": {
+    "contractId": "CA4F7XRMZVDL4WKPKJIKGJUMFPI5HBCX5OV6N5BCHEDPHWVH4SVK3NFE",
+    "circuitWasm": "/circuits/mandate_oracle_allow.wasm",
+    "provingKey": "/proving/mandate_oracle_allow_final.zkey"
+  },
   "mandate": {
     "maxPerTx": "100",
     "maxPosition": "1000",

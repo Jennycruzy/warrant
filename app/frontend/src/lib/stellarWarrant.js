@@ -14,6 +14,8 @@ export const CONTRACT_ERRORS = {
   7: "WrongPublicSignalCount", 8: "CommitmentMismatch", 9: "StaleStateRoot",
   10: "ProofInvalid", 11: "RecipientNotRegistered", 12: "AmountOutOfRange",
   13: "RecipientIdOutOfRange", 14: "OracleKeyNotSet", 15: "PriceMismatch",
+  16: "PriceUnavailable", 17: "PriceOutOfRange",
+  18: "RecipientMismatch", 19: "RecipientTypeMismatch",
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,13 +37,13 @@ function scU64(value) {
 }
 
 function settleArgs(opts) {
-  return [
+  const args = [
     scBytes(opts.proofHex),
     scBytes(opts.publicHex),
-    scU64(opts.price),
-    scU64(opts.timestamp),
-    scBytesN(opts.signatureHex),
   ];
+  if (opts.recipientAddress) args.push(new StellarSdk.Address(opts.recipientAddress).toScVal());
+  args.push(scU64(opts.price), scU64(opts.timestamp), scBytesN(opts.signatureHex));
+  return args;
 }
 
 function settleOp(contractId, args) {
@@ -154,6 +156,18 @@ async function signAndSubmit({ server, tx, networkPassphrase, signXdr }) {
   return { hash: sent.hash, result, footprint };
 }
 
+async function simulateFootprint(server, tx) {
+  const simulated = await server.simulateTransaction(tx);
+  if (rpcNamespace.Api?.isSimulationError?.(simulated) || simulated.error) {
+    const err = simulated.error || simulated;
+    throw new Error(typeof err === "string" ? err : JSON.stringify(err));
+  }
+  return {
+    sorobanData: simulated.transactionData.build().toXDR("base64"),
+    minResourceFee: simulated.minResourceFee,
+  };
+}
+
 // Fund the warrant contract from the connected wallet (the wallet is `from`).
 export async function fundContract({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, amount }) {
   const server = serverFor(rpcUrl);
@@ -178,11 +192,11 @@ export async function fundContract({ rpcUrl, networkPassphrase, sourcePublicKey,
 
 // Compliant path: simulate (the pre-flight gate), wallet-sign, submit, confirm SUCCESS,
 // and return the BORROWED footprint so adversarial calls can force-submit failing txs.
-export async function settleWithPrice({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, proofHex, publicHex, price, timestamp, signatureHex }) {
+export async function settleWithPrice({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, proofHex, publicHex, recipientAddress, price, timestamp, signatureHex }) {
   const server = serverFor(rpcUrl);
   const account = await server.getAccount(sourcePublicKey);
   const tx = new StellarSdk.TransactionBuilder(account, { fee: "1000000", networkPassphrase })
-    .addOperation(settleOp(contractId, settleArgs({ proofHex, publicHex, price, timestamp, signatureHex })))
+    .addOperation(settleOp(contractId, settleArgs({ proofHex, publicHex, recipientAddress, price, timestamp, signatureHex })))
     .setTimeout(120).build();
   const { hash, result, footprint } = await signAndSubmit({ server, tx, networkPassphrase, signXdr });
   if (result.status !== "SUCCESS") {
@@ -192,14 +206,23 @@ export async function settleWithPrice({ rpcUrl, networkPassphrase, sourcePublicK
   return { hash, status: "SUCCESS", footprint };
 }
 
+export async function borrowSettleFootprint({ rpcUrl, networkPassphrase, sourcePublicKey, contractId, proofHex, publicHex, recipientAddress, price, timestamp, signatureHex }) {
+  const server = serverFor(rpcUrl);
+  const account = await server.getAccount(sourcePublicKey);
+  const tx = new StellarSdk.TransactionBuilder(account, { fee: "1000000", networkPassphrase })
+    .addOperation(settleOp(contractId, settleArgs({ proofHex, publicHex, recipientAddress, price, timestamp, signatureHex })))
+    .setTimeout(120).build();
+  return simulateFootprint(server, tx);
+}
+
 // Adversarial path: build a settle tx with a BORROWED footprint from a prior valid
 // simulation and submit it WITHOUT a pre-flight gate, so a deliberately invalid
 // settlement still lands on-chain and the contract reverts. The wallet still signs it.
-export async function settleWithFootprint({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, proofHex, publicHex, price, timestamp, signatureHex, footprint }) {
+export async function settleWithFootprint({ rpcUrl, networkPassphrase, sourcePublicKey, signXdr, contractId, proofHex, publicHex, recipientAddress, price, timestamp, signatureHex, footprint }) {
   if (!footprint?.sorobanData) throw new Error("no borrowed footprint — run a compliant settlement first");
   const server = serverFor(rpcUrl);
   const fee = (BigInt(footprint.minResourceFee) + 5_000_000n).toString();
-  const args = settleArgs({ proofHex, publicHex, price, timestamp, signatureHex });
+  const args = settleArgs({ proofHex, publicHex, recipientAddress, price, timestamp, signatureHex });
 
   let lastHash;
   for (let round = 0; round < 4; round++) {
