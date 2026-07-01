@@ -75,6 +75,14 @@ main {
   background: conic-gradient(from 140deg, var(--green), var(--cyan), var(--green));
   box-shadow: 0 0 0 1px rgba(53, 224, 142, 0.4), 0 0 18px rgba(53, 224, 142, 0.5);
 }
+.navlink {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  padding: 6px 4px;
+}
+.navlink:hover { color: var(--green); text-decoration: none; }
 
 /* ---------- Hero ---------- */
 .hero {
@@ -212,7 +220,7 @@ h2 { font-family: var(--display); font-size: 20px; font-weight: 600; letter-spac
 
 .balances {
   max-width: 1180px;
-  margin: 8px auto 16px;
+  margin: 32px auto 16px;
   padding: 0 28px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

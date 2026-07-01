@@ -98,6 +98,9 @@ export default function App() {
   const [lastProof, setLastProof] = useState(null);
   const [footprint, setFootprint] = useState(null);
   const [feed, setFeed] = useState([]);
+  const [view, setView] = useState(() =>
+    typeof window !== "undefined" && window.location.hash === "#demo" ? "demo" : "landing"
+  );
 
   const network = DEFAULT_NETWORK;
   const rpcUrl = config?.rpcUrl || DEFAULT_RPC;
@@ -155,6 +158,17 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then(setControls)
       .catch(() => setControls(null));
+  }, []);
+
+  // Landing and demo are two separate views on one route, driven by the URL hash.
+  // #demo shows the app; anything else shows the landing page.
+  useEffect(() => {
+    const sync = () => {
+      setView(window.location.hash === "#demo" ? "demo" : "landing");
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
   }, []);
 
   // Restore an already-authorized wallet session on load.
@@ -584,11 +598,12 @@ export default function App() {
   return (
     <main id="top">
       <nav className="nav">
-        <a className="brand" href="#top">
+        <a className="brand" href="#" aria-label="WARRANT — back to overview">
           <span className="brandmark" aria-hidden="true" />
           WARRANT
         </a>
         <div className="walletbox">
+          {view === "demo" && <a className="navlink" href="#">← Overview</a>}
           <span className={`netbadge ${onTestnet ? "" : "warn"}`}>{onTestnet ? "Stellar Testnet" : "Wrong network"}</span>
           {wallet ? (
             <>
@@ -598,10 +613,13 @@ export default function App() {
           ) : (
             <button className="connect" onClick={onConnect}>Connect Wallet</button>
           )}
-          <button className="toggle" onClick={() => setObserver((v) => !v)}>{observer ? "Hide observer" : "Observer view"}</button>
+          {view === "demo" && (
+            <button className="toggle" onClick={() => setObserver((v) => !v)}>{observer ? "Hide observer" : "Observer view"}</button>
+          )}
         </div>
       </nav>
 
+      {view === "landing" && (
       <header className="hero">
         <div className="hero-grid" aria-hidden="true" />
         <div className="hero-glow" aria-hidden="true" />
@@ -640,8 +658,11 @@ export default function App() {
           </div>
         </div>
       </header>
+      )}
 
-      <section id="demo" className="balances">
+      {view === "demo" && (
+      <>
+      <section className="balances">
         <Balance title="Connected wallet" raw={balances.wallet} decimals={decimals} symbol={symbol} loading={balLoading} />
         <Balance title="Warrant contract" raw={balances.contract} decimals={decimals} symbol={symbol} loading={balLoading} />
         <Balance title={selectedRecipient?.label || "Selected recipient"} raw={balances.recipient} decimals={decimals} symbol={symbol} loading={balLoading} />
@@ -771,6 +792,8 @@ export default function App() {
         <p className="verify">Don't trust this UI — verify the live contract directly (no keys needed):</p>
         <code>stellar contract invoke --id {config?.contractId || "<contract-id>"} --network testnet -- current_state_root</code>
       </footer>
+      </>
+      )}
     </main>
   );
 }
