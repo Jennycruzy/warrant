@@ -3,7 +3,7 @@
 // Fixed-depth binary tree. Leaves are recipient ids (field elements); empty
 // slots are 0. Internal nodes are Poseidon(left, right). Provides the root and,
 // for any member leaf, the (pathElements, pathIndices) a prover needs.
-const { poseidon2 } = require("./poseidon");
+const { poseidon2, poseidon3 } = require("./poseidon");
 
 // Build the full tree. `leaves` are decimal strings; padded to 2^depth with "0".
 async function buildTree(leaves, depth) {
@@ -40,4 +40,8 @@ function proofForIndex(tree, index) {
   return { pathElements, pathIndices };
 }
 
-module.exports = { buildTree, proofForIndex };
+async function addressLeaf(identity) {
+  return poseidon3(identity.recipientType, identity.recipientHi, identity.recipientLo);
+}
+
+module.exports = { buildTree, proofForIndex, addressLeaf };

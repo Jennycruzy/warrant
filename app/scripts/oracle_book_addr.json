@@ -1,0 +1,18 @@
+{
+  "mandate": {
+    "maxPerTx": "100",
+    "maxPosition": "1000",
+    "drawdownLimit": "100"
+  },
+  "book": {
+    "position": "100",
+    "peakEquity": "1000"
+  },
+  "allowlist": {
+    "depth": 3,
+    "recipients": [
+      "GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX",
+      "CD7757P47P5PT6HX6327J47S6HYO73XN5TV6V2PI47TOLZHD4LQ6BAYK"
+    ]
+  }
+}
