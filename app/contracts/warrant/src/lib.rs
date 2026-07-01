@@ -509,3 +509,185 @@ impl Warrant {
             .ok_or(Error::NotInitialized)
     }
 }
+
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
+
+    fn addresses(env: &Env) -> (Address, Address, Address) {
+        (
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
+        )
+    }
+
+    fn bytes_with_count(env: &Env, count: u32) -> Bytes {
+        let mut bytes = Bytes::new(env);
+        for b in count.to_be_bytes() {
+            bytes.push_back(b);
+        }
+        bytes
+    }
+
+    fn contract_id(env: &Env) -> Address {
+        env.register(Warrant, ())
+    }
+
+    #[test]
+    fn init_sets_policy_root_token_and_rejects_second_init() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = contract_id(&env);
+        let (admin, token, _) = addresses(&env);
+        let policy = BytesN::from_array(&env, &[1u8; 32]);
+        let root = BytesN::from_array(&env, &[2u8; 32]);
+
+        assert_eq!(
+            env.as_contract(&cid, || {
+                Warrant::init(
+                    env.clone(),
+                    admin.clone(),
+                    token.clone(),
+                    policy.clone(),
+                    root.clone(),
+                )
+            }),
+            Ok(())
+        );
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::policy_commitment(env.clone())),
+            Ok(policy.clone())
+        );
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::current_state_root(env.clone())),
+            Ok(root)
+        );
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::get_token(env.clone())),
+            Ok(token.clone())
+        );
+
+        let other_root = BytesN::from_array(&env, &[3u8; 32]);
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::init(
+                env.clone(),
+                admin,
+                token,
+                policy,
+                other_root
+            )),
+            Err(Error::AlreadyInitialized)
+        );
+    }
+
+    #[test]
+    fn admin_methods_fail_before_init() {
+        let env = Env::default();
+        let cid = contract_id(&env);
+
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::set_vk(env.clone(), Bytes::new(&env))),
+            Err(Error::NotInitialized)
+        );
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::set_oracle(
+                env.clone(),
+                BytesN::from_array(&env, &[0u8; 32])
+            )),
+            Err(Error::NotInitialized)
+        );
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::register_recipient(
+                env.clone(),
+                0,
+                Address::generate(&env)
+            )),
+            Err(Error::NotInitialized)
+        );
+    }
+
+    #[test]
+    fn malformed_verification_key_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = contract_id(&env);
+        let (admin, token, _) = addresses(&env);
+        env.as_contract(&cid, || {
+            Warrant::init(
+                env.clone(),
+                admin,
+                token,
+                BytesN::from_array(&env, &[1u8; 32]),
+                BytesN::from_array(&env, &[2u8; 32]),
+            )
+        })
+        .unwrap();
+
+        let mut vk = Bytes::new(&env);
+        vk.push_back(42);
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::set_vk(env.clone(), vk)),
+            Err(Error::MalformedVerifyingKey)
+        );
+    }
+
+    #[test]
+    fn settle_rejects_wrong_public_signal_count_before_verifying_key_lookup() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = contract_id(&env);
+        let (admin, token, _) = addresses(&env);
+        env.as_contract(&cid, || {
+            Warrant::init(
+                env.clone(),
+                admin,
+                token,
+                BytesN::from_array(&env, &[1u8; 32]),
+                BytesN::from_array(&env, &[2u8; 32]),
+            )
+        })
+        .unwrap();
+
+        assert_eq!(
+            env.as_contract(&cid, || Warrant::settle(
+                env.clone(),
+                Bytes::new(&env),
+                bytes_with_count(&env, 4)
+            )),
+            Err(Error::WrongPublicSignalCount)
+        );
+        assert_eq!(
+            env.as_contract(&cid, || {
+                Warrant::settle_with_price(
+                    env.clone(),
+                    Bytes::new(&env),
+                    bytes_with_count(&env, 5),
+                    10,
+                    1,
+                    BytesN::from_array(&env, &[0u8; 64]),
+                )
+            }),
+            Err(Error::OracleKeyNotSet)
+        );
+    }
+
+    #[test]
+    fn signal_range_decoders_reject_oversized_values() {
+        let mut amount = [0u8; 32];
+        amount[15] = 1;
+        assert_eq!(signal_to_i128(&amount), Err(Error::AmountOutOfRange));
+
+        let mut recipient = [0u8; 32];
+        recipient[27] = 1;
+        assert_eq!(signal_to_u32(&recipient), Err(Error::RecipientIdOutOfRange));
+
+        let mut price = [0u8; 32];
+        price[23] = 1;
+        assert_eq!(signal_to_u64(&price), Err(Error::AmountOutOfRange));
+    }
+}
