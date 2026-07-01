@@ -1,7 +1,7 @@
 {
   "name": "warrant",
   "version": "1.0.0",
-  "description": "",
+  "description": "Provable private delegated spending on Stellar.",
   "main": "index.js",
   "scripts": {
     "setup:toolchain": "bash app/scripts/setup_toolchain.sh",

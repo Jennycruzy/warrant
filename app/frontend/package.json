@@ -2,6 +2,7 @@
   "name": "warrant-demo-ui",
   "private": true,
   "version": "0.1.0",
+  "description": "Interactive WARRANT demo for provable private delegated spending on Stellar.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",

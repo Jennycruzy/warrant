@@ -92,7 +92,7 @@ export default function App() {
   const [observer, setObserver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("idle");
-  const [message, setMessage] = useState("Connect a Stellar testnet wallet to fund and settle.");
+  const [message, setMessage] = useState("Connect a Stellar testnet wallet to fund custody and authorize a payment.");
   const [proofHex, setProofHex] = useState("");
   const [publicHex, setPublicHex] = useState("");
   const [lastProof, setLastProof] = useState(null);
@@ -109,7 +109,7 @@ export default function App() {
   const provingKey = config?.provingKey || "/proving/mandate_oracle_allow_final.zkey";
   const recipientOptions = useMemo(() => {
     if (Array.isArray(config?.recipients) && config.recipients.length > 0) return config.recipients;
-    return [{ id: "0", label: "Recipient 0, allowlisted", address: config?.recipient, type: 0 }];
+    return [{ id: "0", label: "Approved recipient 0", address: config?.recipient, type: 0 }];
   }, [config?.recipients, config?.recipient]);
   const selectedRecipient = recipientOptions.find((r) => String(r.id) === String(recipient));
   const selectedRecipientAddress = selectedRecipient?.address || config?.recipient;
@@ -236,7 +236,7 @@ export default function App() {
       const testnet = await isWalletOnTestnet();
       setOnTestnet(testnet);
       setMessage(testnet
-        ? "Wallet connected. Fund the warrant, then settle a compliant proof."
+        ? "Wallet connected. Fund custody, then authorize a compliant proof-backed payment."
         : "Wallet connected but NOT on Stellar testnet. Switch the wallet network to Testnet.");
     } catch (err) {
       setMessage(err.message || String(err));
@@ -277,15 +277,15 @@ export default function App() {
     setFundAmount(rawAmount);
     setBusy(true);
     setStatus("submitting");
-    setMessage("Building fund transaction — approve it in your wallet.");
+    setMessage("Building custody-funding transaction — approve it in your wallet.");
     try {
       const sent = await fundContract({
         rpcUrl, networkPassphrase: network, sourcePublicKey: wallet, signXdr,
         contractId: config.contractId, amount: rawAmount,
       });
       setStatus("idle");
-      appendFeed({ kind: "settled", text: `Funded warrant with ${fundAmount} ${symbol} (raw)`, hash: sent.hash });
-      setMessage("Funded on-chain. Contract balance increased.");
+      appendFeed({ kind: "settled", text: `Funded custody with ${fundAmount} ${symbol} (raw)`, hash: sent.hash });
+      setMessage("Funded on-chain. Custody balance increased.");
       await refreshBalances();
     } catch (err) {
       setStatus("rejected");
@@ -315,7 +315,7 @@ export default function App() {
       throw new Error("The live state root is not in the committed control manifest.");
     }
     if (!recipientOption) {
-      throw new Error("The selected recipient is not in the committed private allowlist.");
+      throw new Error("The selected recipient is not in the committed private approved-recipient list.");
     }
     const controlRecipient = controlRecipientById.get(String(recipientOption.id));
     if (!controlRecipient) {
@@ -324,11 +324,11 @@ export default function App() {
     const amt = BigInt(amountValue);
     const nextPositionValue = BigInt(state.position) + amt;
     if (!allowOverMaxPosition && nextPositionValue > BigInt(controls.mandate.maxPosition)) {
-      throw new Error("The selected amount would exceed the hidden max position.");
+      throw new Error("The selected amount would exceed the private exposure cap.");
     }
     const nextState = controlStateByPosition.get(nextPositionValue.toString());
     if (!nextState) {
-      throw new Error("No precomputed state root exists for the selected next position.");
+      throw new Error("No precomputed state root exists for the selected next holdings value.");
     }
     const input = {
       policyCommitment: controls.policyCommitment,
@@ -371,18 +371,18 @@ export default function App() {
   function anchorAmountForState(state, requested = amount) {
     const remaining = BigInt(controls?.mandate?.maxPosition || 0) - BigInt(state.position);
     const capped = BigInt(Math.max(1, Math.min(Number(controls?.mandate?.maxPerTx || 1), requested)));
-    if (remaining <= 0n) throw new Error("The live state has reached the hidden max position.");
+    if (remaining <= 0n) throw new Error("The live state has reached the private exposure cap.");
     return (remaining < capped ? remaining : capped).toString();
   }
 
   async function prepareCurrentAnchor({ purpose, recipientOption = selectedRecipient, amountOverride }) {
-    setMessage(`Generating a current-root proof for ${purpose}.`);
+    setMessage(`Generating a current-root payment proof for ${purpose}.`);
     const live = await readContractState({ rpcUrl, contractId: config.contractId });
     setChain(live);
     const liveRoot = (live.root || "").toLowerCase();
     const state = controlStateByRoot.get(liveRoot);
     if (!state) {
-      throw new Error(`No current-root proof is available for ${purpose}. Reset the demo to a known root.`);
+      throw new Error(`No current-root payment proof is available for ${purpose}. Reset the demo to a known root.`);
     }
     const result = await proveControlInput({
       state,
@@ -390,7 +390,7 @@ export default function App() {
       amountValue: amountOverride || anchorAmountForState(state),
     });
     setStatus("simulating");
-    setMessage(`Borrowing Soroban resources for ${purpose}; no valid settlement is submitted.`);
+    setMessage(`Borrowing Soroban resources for ${purpose}; no valid payment is submitted.`);
     const borrowed = await borrowSettleFootprint({
       rpcUrl, networkPassphrase: network, sourcePublicKey: wallet,
       contractId: config.contractId,
@@ -408,7 +408,7 @@ export default function App() {
   async function onSettle() {
     if (!(await requireWallet())) return;
     setBusy(true);
-    setMessage("Generating witness.");
+    setMessage("Generating proof witness.");
     try {
       const scenario = selectedScenario;
       if (scenario !== "valid") {
@@ -434,7 +434,7 @@ export default function App() {
       setProofHex(result.proofHex);
       setPublicHex(result.publicHex);
       setStatus("submitting");
-      setMessage(`Proof generated for ${amount} raw ${symbol}; approve the settlement in your wallet.`);
+      setMessage(`Proof generated for ${amount} raw ${symbol}; approve the payment in your wallet.`);
       const sent = await settleWithPrice({
         rpcUrl, networkPassphrase: network, sourcePublicKey: wallet, signXdr,
         contractId: config.contractId,
@@ -445,9 +445,9 @@ export default function App() {
       setStatus("settled");
       setLastProof(result);
       setFootprint(sent.footprint);
-      appendFeed({ kind: "settled", text: `Compliant settlement paid ${amount} raw ${symbol}`, hash: sent.hash });
+      appendFeed({ kind: "settled", text: `Compliant payment released ${amount} raw ${symbol}`, hash: sent.hash });
       const remaining = BigInt(controls.mandate.maxPosition) - BigInt(result.nextState.position);
-      setMessage(`Settlement landed on-chain — state root advanced to position ${result.nextState.position} and the recipient was paid.${remaining > 0n ? ` ${remaining} raw position remains under the private cap.` : " The agent has now reached the mandate cap."} Forged/replay attempts land as real reverted txs.`);
+      setMessage(`Payment landed on-chain — state root advanced to holdings value ${result.nextState.position} and the recipient was paid.${remaining > 0n ? ` ${remaining} raw units remain under the private exposure cap.` : " The delegated account has reached its private exposure cap."} Forged/replay attempts land as real reverted txs.`);
       setChain(await readContractState({ rpcUrl, contractId: config.contractId }));
       await refreshBalances();
     } catch (err) {
@@ -455,7 +455,7 @@ export default function App() {
       setStatus(neverReached ? "blocked" : "rejected");
       appendFeed({
         kind: neverReached ? "blocked" : "rejected",
-        text: neverReached ? "No proof can exist; never reached chain" : "Settlement rejected",
+        text: neverReached ? "No proof can exist; never reached chain" : "Payment rejected",
       });
       setMessage(neverReached ? reasonFor(selectedScenario) : err.message || String(err));
     } finally {
@@ -465,7 +465,7 @@ export default function App() {
 
   function requireAnchor() {
     if (footprint && lastProof) return true;
-    setMessage("Run a compliant settlement first — the adversarial attempts reuse its on-chain footprint to land as real reverted txs.");
+    setMessage("Run a compliant payment first — the adversarial attempts reuse its on-chain footprint to land as real reverted txs.");
     return false;
   }
 
@@ -521,7 +521,7 @@ export default function App() {
 
   async function onRedirect() {
     if (!addressBound || !config?.redirectRecipient) {
-      setMessage("Redirect testing is only available on the address-bound deployment config.");
+      setMessage("Payment redirect testing is only available on the address-bound deployment config.");
       return;
     }
     if (!(await requireWallet())) return;
@@ -529,7 +529,7 @@ export default function App() {
     try {
       const accountOption = recipientOptions.find((r) => String(r.type) === "0");
       if (!accountOption) {
-        throw new Error("No account recipient is configured for redirect testing.");
+        throw new Error("No account recipient is configured for payment redirect testing.");
       }
       const anchor = await prepareCurrentAnchor({
         purpose: "a redirect attempt",
@@ -585,11 +585,11 @@ export default function App() {
     setBusy(true);
     try {
       await proveScenario("breach");
-      throw new Error("breached mark unexpectedly produced a proof");
+      throw new Error("lower valuation unexpectedly produced a proof");
     } catch {
       setStatus("blocked");
-      appendFeed({ kind: "blocked", text: "Lower oracle mark made the same action unprovable" });
-      setMessage("Oracle re-mark: price 8 derives equity 800, drawdown 200 exceeds hidden limit 100. Never reached chain.");
+      appendFeed({ kind: "blocked", text: "Lower authenticated valuation made the same payment unprovable" });
+      setMessage("Lower valuation: price 8 derives value 800, permitted decline 200 exceeds private limit 100. Never reached chain.");
     } finally {
       setBusy(false);
     }
@@ -624,27 +624,27 @@ export default function App() {
         <div className="hero-grid" aria-hidden="true" />
         <div className="hero-glow" aria-hidden="true" />
         <div className="hero-inner">
-          <p className="eyebrow">Custody an autonomous agent cannot break</p>
+          <p className="eyebrow">Provable delegated spending on Stellar</p>
           <h1 className="hero-title">
-            Private mandate.
+            Private delegation terms.
             <span className="hero-title-accent">Public settlement.</span>
           </h1>
           <p className="hero-tag">
-            A ZK-enforced leash for agents that hold funds. The contract releases {symbol} only
+            A ZK-enforced spending control for delegated operators. The contract releases {symbol} only
             after a proof binds the private witness to the public commitment, live root, amount,
-            recipient identity, and signed price. No valid proof, no movement — enforced by
+            recipient identity, and signed valuation. No valid proof, no movement — enforced by
             mathematics, not trust.
           </p>
           <div className="claims">
             <div className="claim">
               <span className="claim-k">01</span>
-              <p className="claim-t">Physically incapable</p>
+              <p className="claim-t">Proof-gated funds</p>
               <p className="claim-d">There is no code path that releases funds without a state-extending proof.</p>
             </div>
             <div className="claim">
               <span className="claim-k">02</span>
-              <p className="claim-t">Mandate stays hidden</p>
-              <p className="claim-d">Limits, allowlist, and book live off-chain. Only commitments and roots are public.</p>
+              <p className="claim-t">Terms stay hidden</p>
+              <p className="claim-d">Limits, approved recipients, and holdings live off-chain. Only commitments and roots are public.</p>
             </div>
             <div className="claim">
               <span className="claim-k">03</span>
@@ -664,7 +664,7 @@ export default function App() {
       <>
       <section className="balances">
         <Balance title="Connected wallet" raw={balances.wallet} decimals={decimals} symbol={symbol} loading={balLoading} />
-        <Balance title="Warrant contract" raw={balances.contract} decimals={decimals} symbol={symbol} loading={balLoading} />
+        <Balance title="Custody contract" raw={balances.contract} decimals={decimals} symbol={symbol} loading={balLoading} />
         <Balance title={selectedRecipient?.label || "Selected recipient"} raw={balances.recipient} decimals={decimals} symbol={symbol} loading={balLoading} />
         <div className="balcard refresh">
           <button disabled={balLoading} onClick={refreshBalances}>Refresh balances</button>
@@ -674,27 +674,27 @@ export default function App() {
 
       <section className="grid">
         <aside className="zone secret">
-          <p className="label">Demo witness</p>
-          <h2>Private inputs</h2>
+          <p className="label">Delegated account — private</p>
+          <h2>Private account controls</h2>
           <dl>
-            <dt>Max per tx</dt><dd>{secretMandate.maxPerTx}</dd>
-            <dt>Max position</dt><dd>{secretMandate.maxPosition}</dd>
-            <dt>Drawdown limit</dt><dd>{secretMandate.drawdownLimit}</dd>
-            <dt>Book position</dt><dd>{privateBook.position}</dd>
-            <dt>Signed price</dt><dd>{config?.price ?? "—"}</dd>
+            <dt>Max per payment</dt><dd>{secretMandate.maxPerTx}</dd>
+            <dt>Exposure cap</dt><dd>{secretMandate.maxPosition}</dd>
+            <dt>Permitted decline</dt><dd>{secretMandate.drawdownLimit}</dd>
+            <dt>Holdings value</dt><dd>{privateBook.position}</dd>
+            <dt>Signed valuation</dt><dd>{config?.price ?? "—"}</dd>
           </dl>
           <p className="lock">Loaded locally for the demo; the contract stores only commitments and roots.</p>
         </aside>
 
         <section className="zone action">
-          <p className="label">Action</p>
-          <h2>Try to move {symbol}</h2>
+          <p className="label">Payment request</p>
+          <h2>Authorize a payment</h2>
           <div className="runmeta">
-            <span>Max per tx <strong>{secretMandate.maxPerTx}</strong> raw</span>
-            <span>Live position <strong>{livePosition || "—"}</strong></span>
-            <span>{intendedNextPosition ? `Next position ${intendedNextPosition}` : "Root matched live"}</span>
+            <span>Per-payment cap <strong>{secretMandate.maxPerTx}</strong> raw</span>
+            <span>Live holdings <strong>{livePosition || "—"}</strong></span>
+            <span>{intendedNextPosition ? `Next holdings ${intendedNextPosition}` : "Root matched live"}</span>
           </div>
-          <label>Attempt amount <strong className={amountIsCompliant ? "goodtext" : "warntext"}>{amount}</strong>
+          <label>Payment amount <strong className={amountIsCompliant ? "goodtext" : "warntext"}>{amount}</strong>
             <div className="amountrow">
               <input type="range" min="1" max="160" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
               <input
@@ -707,32 +707,32 @@ export default function App() {
               />
             </div>
           </label>
-          <label>Recipient
+          <label>Approved recipient
             <select value={recipient} onChange={(e) => setRecipient(e.target.value)}>
               {recipientOptions.map((r) => (
                 <option value={r.id} key={r.id}>{r.label || r.address}</option>
               ))}
-              <option value={addressBound ? "nonAllow" : "7"}>{addressBound ? "Wrong type, not allowlisted" : "Recipient 7, not allowlisted"}</option>
+              <option value={addressBound ? "nonAllow" : "7"}>{addressBound ? "Wrong type, not approved" : "Recipient 7, not approved"}</option>
             </select>
           </label>
           <div className="fundrow">
             <label>Fund amount (raw)
               <input type="number" min="1" step="1" value={fundAmount} onChange={(e) => setFundAmount(clampInteger(e.target.value, 1, Number.MAX_SAFE_INTEGER, 1000))} />
             </label>
-            <button disabled={busy || !config || !wallet} onClick={onFund}>Fund warrant</button>
+            <button disabled={busy || !config || !wallet} onClick={onFund}>Fund custody</button>
           </div>
           <div className="buttons">
-            <button disabled={busy || !config || !wallet} onClick={onSettle}>Generate proof &amp; settle</button>
+            <button disabled={busy || !config || !wallet} onClick={onSettle}>Generate proof &amp; pay</button>
             <button disabled={busy || !config || !wallet} onClick={onForged}>Submit forged proof</button>
             <button disabled={busy || !config || !wallet} onClick={onReplay}>Replay last proof</button>
-            {addressBound && <button disabled={busy || !config || !wallet} onClick={onRedirect}>Redirect recipient</button>}
+            {addressBound && <button disabled={busy || !config || !wallet} onClick={onRedirect}>Redirect payment</button>}
             {addressBound && <button disabled={busy || !config || !wallet} onClick={onTypeConfusion}>Type confusion</button>}
-            <button disabled={busy || !config} onClick={onRemark}>Oracle re-mark</button>
+            <button disabled={busy || !config} onClick={onRemark}>Lower valuation</button>
           </div>
           <div className="pipeline">
             <Step name="witness" state={status === "witness" ? "active" : ""} />
             <Step name="prove" state={status === "proving" ? "active" : ""} />
-            <Step name="wallet sign" state={status === "submitting" ? "active" : ""} />
+            <Step name="wallet approval" state={status === "submitting" ? "active" : ""} />
             <Step name="settled" state={status === "settled" ? "good" : ""} />
             <Step name="rejected" state={status === "rejected" || status === "blocked" ? "bad" : ""} />
           </div>
@@ -746,17 +746,17 @@ export default function App() {
             <dt>Contract</dt><dd title={config?.contractId}>{short(config?.contractId)}</dd>
             <dt>Token ({symbol})</dt><dd title={config?.token}>{short(config?.token)}</dd>
             {addressBound && <><dt>Binding</dt><dd>type + key bytes</dd></>}
-            <dt>Policy commitment</dt><dd>{short(chain.commitment || config?.commitmentHex)}</dd>
+            <dt>Delegation commitment</dt><dd>{short(chain.commitment || config?.commitmentHex)}</dd>
             <dt>State root</dt><dd>{short(chain.root || config?.genesisRootHex)}</dd>
           </dl>
-          <p className="lock">The mandate and book are absent from chain.</p>
+          <p className="lock">The limits and account state are absent from chain.</p>
         </aside>
       </section>
 
       {observer && (
         <section className="observer">
-          <h2>Raw observer bytes</h2>
-          <p className="muted">Not stored on-chain: maxPerTx, maxPosition, drawdownLimit, allowlist root, and private book.</p>
+          <h2>Raw public evidence</h2>
+          <p className="muted">Not stored on-chain: per-payment limit, exposure cap, permitted-decline rule, approved-recipient root, and private holdings.</p>
           <pre>{JSON.stringify({
             contractId: config?.contractId,
             tokenId: config?.token,
@@ -785,8 +785,8 @@ export default function App() {
       <footer>
         <p>
           No mocks: proofs are generated with snarkjs in this browser, every on-chain action is signed by your
-          connected Stellar wallet, and this UI builds the witness from the selected amount, recipient, and live root.
-          Compliant settlements pay {symbol} on Stellar testnet, while forged or replayed proofs are submitted and
+          connected Stellar wallet, and this UI builds the witness from the selected payment amount, recipient identity, and live root.
+          Compliant payments release {symbol} on Stellar testnet, while forged or replayed proofs are submitted and
           <strong> revert on-chain</strong> with real explorer links.
         </p>
         <p className="verify">Don't trust this UI — verify the live contract directly (no keys needed):</p>
@@ -799,10 +799,10 @@ export default function App() {
 }
 
 function reasonFor(scenario) {
-  if (scenario === "overLimit") return "Stopped before chain: witness/proof generation failed — amount exceeds the hidden maxPerTx. No transaction was submitted.";
-  if (scenario === "overMaxPosition") return "Stopped before chain: witness/proof generation failed — the move would exceed the hidden maxPosition. No transaction was submitted.";
-  if (scenario === "nonAllow") return "Stopped before chain: witness/proof generation failed — recipient is not in the committed private allowlist. No transaction was submitted.";
-  if (scenario === "controlsUnavailable") return "Stopped before chain: the address-bound control manifest is not loaded, so the UI cannot build a witness input.";
+  if (scenario === "overLimit") return "Stopped before chain: witness/proof generation failed — amount exceeds the private per-payment limit. No transaction was submitted.";
+  if (scenario === "overMaxPosition") return "Stopped before chain: witness/proof generation failed — the payment would exceed the private exposure cap. No transaction was submitted.";
+  if (scenario === "nonAllow") return "Stopped before chain: witness/proof generation failed — recipient is not in the committed private approved-recipient list. No transaction was submitted.";
+  if (scenario === "controlsUnavailable") return "Stopped before chain: the demo control manifest is not loaded, so the UI cannot build a witness input.";
   if (scenario === "stateUnavailable") return "Stopped before chain: this live root is outside the committed demo control table. Reset the demo to a known root.";
   return "No proof can exist.";
 }

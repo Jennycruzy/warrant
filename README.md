@@ -1,31 +1,31 @@
 # WARRANT
 
-**Custody an autonomous agent cannot break. Private mandate, public settlement.**
+**Provable, private, delegated spending on Stellar.**
 
 ## Who this is for
 
-Picture an **autonomous trading agent** that holds funds and moves them on its own.
-You need two things at once that are normally in tension:
+Delegating on-chain spending today usually forces a bad choice: publish the
+limits and account state so everyone can audit them, or keep them private and
+ask everyone to trust an off-chain claim.
 
-1. The agent must be **physically incapable** of exceeding the limits you set — per-trade
-   size, total position, drawdown, and who it may pay.
-2. Those limits must stay **private**. A mandate published on-chain is a map your
-   competitors and front-runners read and game.
+WARRANT gives a principal both privacy and enforcement. The principal commits
+delegation terms as a hash on Stellar, funds a custody contract, and lets a
+delegated operator request payments. Funds move only when the operator produces
+a zero-knowledge proof that the requested payment obeys the private terms,
+extends the live state-root chain, and pays the exact approved recipient.
 
-WARRANT gives you both. The principal commits a *hashed* mandate on-chain and funds a
-custody contract. After that, the agent can move money **only** by producing a zero-knowledge
-proof that the move obeys the mandate and extends the contract's state-root chain. There is
-no other code path that releases funds: a non-compliant move can't even *produce* a proof,
-and a forged or replayed proof reverts on-chain. The leash is enforced by mathematics — and
-nobody, not even the agent, can see the leash.
+The spending limits, account balances, valuation rules, and approved-recipient
+list stay confidential. The chain sees only a commitment, state roots, public
+payment details, and the proof. No valid proof, no movement. No matching prior
+state, rejected.
 
 ## How it works
 
 WARRANT is a Soroban (Stellar) contract that releases a stablecoin **only** when a
-Groth16 zero-knowledge proof shows the transfer obeys a pre-committed, private
-mandate — and only when the move extends an on-chain state-root chain. No valid
-proof, no movement. No matching prior state, rejected. The mandate and the book
-stay private; only the proof, the public commitment, and the action are on-chain.
+Groth16 zero-knowledge proof shows the payment obeys pre-committed, private
+delegation terms - and only when the payment extends an on-chain state-root
+chain. The private account state never appears on-chain; only the proof, the
+public commitment, and the public payment details do.
 
 The frontend is a **wallet-native Stellar dapp**: the user connects a real testnet
 wallet (Freighter), and every on-chain action — funding the contract, settling a
@@ -42,10 +42,11 @@ native XLM.
 
 ## The actors
 
-- **Principal** — sets the mandate (per-transaction limit, max position, drawdown
-  limit), commits its hash on-chain, funds the contract, and never reveals the mandate.
-- **Agent / prover** — holds the private book and must produce a valid proof to move
-  funds. It cannot move money any other way.
+- **Principal** — sets the spending mandate (per-payment limit, exposure cap, and
+  maximum permitted decline), commits its hash on-chain, funds the contract, and
+  never reveals the private terms.
+- **Delegated operator / prover** — holds the private account state and must
+  produce a valid proof to request a payment. It cannot move money any other way.
 - **Verifier contract** — the only thing that can release funds, and only on a valid,
   state-extending proof.
 - **Recipient** — receives the stablecoin when a settlement verifies.
@@ -59,14 +60,15 @@ the powers-of-tau ceremony uses the `bls12381` curve, and the on-chain verifier 
 `env.crypto().bls12_381()`. This was confirmed directly against the on-chain verifier
 and a real proving key, not assumed.
 
-## Live oracle: Reflector (SEP-40)
+## Authenticated valuation: Reflector (SEP-40)
 
-The price mark can come from the **live [Reflector](https://reflector.network) oracle**, a
+The reference valuation can come from the **live [Reflector](https://reflector.network) oracle**, a
 real decentralized price feed on Stellar. The contract's `settle_with_reflector` entrypoint
 performs an on-chain **cross-contract call** to Reflector's SEP-40 `lastprice(Other(asset))`,
 reads the authenticated price, and requires that exact price to be the price the Groth16 proof
-was built against. No matching live price, no settlement — so the agent can only act on a
-*current, real* oracle mark, and a proof built against any other price reverts on-chain.
+was built against. No matching live price, no settlement - so the delegated operator can only
+settle against a *current, real* valuation, and a proof built against any other price reverts
+on-chain.
 
 - Reflector testnet oracle (CEX/DEX feed, base USD, 14 decimals): `CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63`
 - Run it: `node app/scripts/sdk/drive_reflector.mjs` (provisions fresh, reads the live XLM/USD
@@ -80,10 +82,10 @@ Real testnet run (XLM/USD `17764414800342` ≈ $0.1776):
 | **Compliant, priced by live Reflector** | SUCCESS | ✅ SUCCESS, 50 moved, root advanced | [`d0053bba…fc826b1a`](https://stellar.expert/explorer/testnet/tx/d0053bba25f66d36249621b30380c5845b68fdc464d823f39a65ad7ffc826b1a) |
 | **Proof bound to a fabricated price** | revert | ✅ REVERTED `PriceMismatch #15` (contract re-read Reflector) | [`1c90b4de…78dea775`](https://stellar.expert/explorer/testnet/tx/1c90b4de5ed8db88044ca07555be7e83544b036cdae24c626df7e6c878dea775) |
 
-The contract also keeps a self-signed (Ed25519) price path (`settle_with_price`) for the
-deterministic, replayable UI demo, whose fixed price keeps the chained settlement sequence
-reproducible. Both paths bind the price as a verified public signal; only the *source* of
-the price differs (live Reflector vs an admin-signed report).
+The contract also keeps a self-signed (Ed25519) valuation path (`settle_with_price`) for the
+deterministic, replayable UI demo, whose fixed reference price keeps the chained settlement
+sequence reproducible. Both paths bind the price as a verified public signal; only the
+*source* differs (live Reflector vs an admin-signed report).
 
 ## Toolchain
 
@@ -118,11 +120,11 @@ The deployment the UI talks to (`app/frontend/public/demo-config.json`), all on
 
 | Thing | Value |
 | --- | --- |
-| Warrant contract | `CCGUAXJ2SAGCQMVVJAL67CLQ735R2YOUFIBJMLCOBAMG2UNN4HVNMSSY` |
+| Custody contract | `CCGUAXJ2SAGCQMVVJAL67CLQ735R2YOUFIBJMLCOBAMG2UNN4HVNMSSY` |
 | USDW token (SAC) | `CCSRBXPDLPRYRAHDKR3HUJZJRALRSJK64CUBVQ4VNY7SIVOGU22QWXJX` |
 | Account recipient | `GDV5O5MUNR3HLSWT2DPWIQBG6NE7ZIKPY563BVE4Z43GM6GBUCTQ7JLZ` |
 | Contract recipient | `CBTDVUCVGRWA2QMSOIZ4S5LIZYJ5MKOZN2F6FCE3I57CA2B3PRTGBNVQ` |
-| Recipient binding | `(type, 32 key bytes)` in the proof and allowlist |
+| Recipient binding | `(type, 32 key bytes)` in the proof and approved-recipient commitment |
 | Oracle public key (Ed25519) | `eaee897380a52a6b18205c33d79ed68e26f23ab85f46a9f74e044a989411af0b` |
 | Network passphrase | `Test SDF Network ; September 2015` |
 | Soroban RPC | `https://soroban-testnet.stellar.org` |
@@ -139,12 +141,12 @@ This contract is intentionally left **at genesis** so a viewer can perform the f
 of **2 chained** compliant settlements live from their own wallet: first to the account
 recipient, then to the contract recipient.
 
-## Evidence: chained settlements + adversarial reverts on a fresh contract
+## Evidence: chained payments + adversarial reverts on a fresh contract
 
 `node app/scripts/sdk/drive_addr.mjs` provisions a brand-new address-bound warrant on
 testnet and drives the core sequence as real, explorer-visible transactions: local
 no-proof failures, redirect/type-confusion reverts, account and contract recipient
-settlements, then forged and replayed proof reverts. The run below is real testnet output:
+payments, then forged and replayed proof reverts. The run below is real testnet output:
 
 - Fresh warrant: `CC5RSXUYNA7P4HYRLC5G37JM6A2B5NKRJ3CEWVNRPDIWFE5ZOMXVRESG`
 - Contract recipient: `CDOAFUXJKGISKRJH2IUVLGFG2XHW73ZHT6XMST7FLKTO6RGQGJYUX3F4`
@@ -152,26 +154,34 @@ settlements, then forged and replayed proof reverts. The run below is real testn
 | Scenario | Expected | Actual | Tx hash / proof error | Custody (raw) | Recipient (raw) | State root |
 | --- | --- | --- | --- | --- | --- | --- |
 | Contract initialized + funded | genesis root | OK | (init + mint) | 100000 | 0 | `45be8d72…cba264f1` |
-| **Redirect recipient** | revert on-chain | REVERTED `RecipientMismatch #18` | [`647ed577…d57b6b4`](https://stellar.expert/explorer/testnet/tx/647ed577e7e66ade4b1f667546d8ad8788e6815a4ea5e7ad5a94b52b1d57b6b4) | unchanged | unchanged | unchanged |
+| **Redirect payment** | revert on-chain | REVERTED `RecipientMismatch #18` | [`647ed577…d57b6b4`](https://stellar.expert/explorer/testnet/tx/647ed577e7e66ade4b1f667546d8ad8788e6815a4ea5e7ad5a94b52b1d57b6b4) | unchanged | unchanged | unchanged |
 | **Type confusion** | revert on-chain | REVERTED `RecipientTypeMismatch #19` | [`420f3661…be11ca2`](https://stellar.expert/explorer/testnet/tx/420f3661d6c88e3ee45d668773886ac878e0db035e74a808cc3a1253abe11ca2) | unchanged | unchanged | unchanged |
-| **Compliant account settle** | SUCCESS, pays account | SUCCESS | [`7e3bf515…c045b17`](https://stellar.expert/explorer/testnet/tx/7e3bf515ad0d55e4c5208d5ddbfa154af429192d9555def3d84b8375bc045b17) | 100000 → **99990** | 0 → **10** | `45be8d72…` → `07e66e8c…` |
-| **Compliant contract settle** | SUCCESS, pays contract | SUCCESS | [`157f9e81…168ff13`](https://stellar.expert/explorer/testnet/tx/157f9e818244dab8cffd5e9a0d2e702164c5f663cfbcb867486d6294f168ff13) | 99990 → **99980** | 0 → **10** | `07e66e8c…` → `11b6e849…` |
+| **Compliant account payment** | SUCCESS, pays account | SUCCESS | [`7e3bf515…c045b17`](https://stellar.expert/explorer/testnet/tx/7e3bf515ad0d55e4c5208d5ddbfa154af429192d9555def3d84b8375bc045b17) | 100000 → **99990** | 0 → **10** | `45be8d72…` → `07e66e8c…` |
+| **Compliant contract payment** | SUCCESS, pays contract | SUCCESS | [`157f9e81…168ff13`](https://stellar.expert/explorer/testnet/tx/157f9e818244dab8cffd5e9a0d2e702164c5f663cfbcb867486d6294f168ff13) | 99990 → **99980** | 0 → **10** | `07e66e8c…` → `11b6e849…` |
 | **Forged proof** | revert on-chain | REVERTED `ProofInvalid #10` | [`3dafbadb…52e776b`](https://stellar.expert/explorer/testnet/tx/3dafbadbb1ae88cf3f96e17181678e2e95798263155144e543b0f5f3d52e776b) | unchanged | unchanged | unchanged |
 | **Replay proof** | revert on-chain | REVERTED `StaleStateRoot #9` | [`e1828d4b…73c09fc`](https://stellar.expert/explorer/testnet/tx/e1828d4b779996d42a9af9e7779ea86cc5ae712cd3e92bde1dbea855873c09fc) | unchanged | unchanged | unchanged |
 | Over-limit amount | no proof | witness fails | local `groth16.fullProve` error | — | — | — |
-| Over max-position | no proof | witness fails | local `groth16.fullProve` error | — | — | — |
-| Oracle re-mark / price breach | no proof | witness fails | local `groth16.fullProve` error | — | — | — |
-| Wrong type for allowlisted bytes | no proof | witness fails | local allowlist lookup / witness failure | — | — | — |
+| Over exposure cap | no proof | witness fails | local `groth16.fullProve` error | — | — | — |
+| Lower valuation / permitted-decline breach | no proof | witness fails | local `groth16.fullProve` error | — | — | — |
+| Wrong type for approved bytes | no proof | witness fails | local approved-list lookup / witness failure | — | — | — |
 
-The compliant account and contract settlements each moved exactly 10 USDW (raw) and walked
+The compliant account and contract payments each moved exactly 10 USDW (raw) and walked
 the state root genesis → `07e66e8c…` → `11b6e849…`. The redirect, type-confusion, forged,
 and replay transactions are **real, committed, explorer-visible testnet transactions that
 reverted** and moved nothing.
 
-The pre-chain rejections (over-limit amount, non-allowlisted recipient, oracle
-price-breach) produce **no transaction at all**: `snarkjs.groth16.fullProve` cannot
+The pre-chain rejections (over-limit amount, non-approved recipient, lower-valuation
+breach) produce **no transaction at all**: `snarkjs.groth16.fullProve` cannot
 build a witness, so nothing is ever submitted. That is the point — for those cases a
 valid proof simply cannot exist.
+
+## Why ZK is load-bearing
+
+WARRANT is not a UI permission screen or an off-chain policy engine. If the proof is removed,
+the mechanism collapses into a claim that someone checked the rules elsewhere. With the proof
+in place, the private rules stay hidden while the contract still enforces them before releasing
+funds. The state-root chain is equally load-bearing: it prevents replay and forces every valid
+payment to extend the same committed account history.
 
 ## How to verify without the UI
 
@@ -206,10 +216,10 @@ npm install
 npm run dev      # open the printed URL, install Freighter, set it to Testnet
 ```
 
-Connect the wallet, then click **Generate proof & settle**. The current demo proves and
-settles the amount and allowlisted recipient currently selected in the UI. The forged/replay,
+Connect the wallet, then click **Generate proof & pay**. The current demo proves and
+settles the amount and approved recipient currently selected in the UI. The forged/replay,
 redirect, and type-confusion buttons submit real reverting transactions. Try over-limit,
-over-position, or non-allowlisted settings to see the proof fail before any transaction is built.
+over-exposure, or non-approved settings to see the proof fail before any transaction is built.
 
 ## Deploy to Vercel
 
@@ -229,28 +239,28 @@ Notes:
   Vercel serves them and in-browser proving works on the deployed site.
 - Visitors must install Freighter and set it to **Testnet**.
 
-### Chained settlements and resetting
+### Chained payments and resetting
 
-The agent's book evolves across settlements. Each compliant proof extends the
-previous on-chain state root, so a viewer can click *Generate proof & settle* and
-watch the position grow and the selected recipient get paid. The frontend reads the live
+The delegated account state evolves across settlements. Each compliant proof extends the
+previous on-chain state root, so a viewer can click *Generate proof & pay* and
+watch the holdings value grow and the selected recipient get paid. The frontend reads the live
 on-chain root, matches it to the committed address-bound control table
 (`app/frontend/public/controls/manifest.json`), then builds the witness input from the
-viewer-selected amount, recipient identity, and private book state for that root. It still
+viewer-selected amount, recipient identity, and private account state for that root. It still
 runs real `snarkjs.groth16.fullProve` in the browser; the control table contains roots and
 Merkle paths, not proofs.
 
-When the position reaches the mandate cap, no further compliant proof can exist (the
-position/drawdown limit working as designed), and the UI shows a witness-generation refusal
+When the holdings value reaches the exposure cap, no further compliant proof can exist (the
+exposure and permitted-decline limits working as designed), and the UI shows a witness-generation refusal
 message **without** submitting a doomed transaction.
 
 The other demos:
 
-- **Over-limit** and **non-allowlisted** (and the **oracle re-mark**) prove locally in the
+- **Over-limit** and **non-approved recipient** (and the **lower valuation**) prove locally in the
   browser and fail at witness generation, so they work for everyone, any time.
 - **Forged** and **replay** reuse the on-chain footprint of a *successful compliant
   settlement from the same session*, so they land as real reverted transactions right after
-  any *Generate proof & settle*.
+  any *Generate proof & pay*.
 
 To see the **full** chained + forged + replay sequence land on-chain at any time
 (it provisions a fresh contract every run), use the CLI driver instead of the hosted UI:
@@ -278,6 +288,15 @@ Rollback is a config-only switch: `app/frontend/public/demo-config.json` include
 `mandate_oracle_allow` artifacts. Restoring those values returns the UI to the old path;
 the old contract and circuit remain deployed alongside the address-bound path.
 
+## Beyond delegation: autonomous agents
+
+Autonomous agents are one application of the same primitive, not a separate mechanism. An
+agent that controls funds can be treated as a delegated operator: it may propose payments,
+but the contract releases funds only when a proof shows the action respects the private
+spending mandate, approved-recipient commitment, live state root, and authenticated
+valuation. The same construction also fits human operators, treasury workflows, grant
+disbursement, and regulated counterparties.
+
 ## Wallet security
 
 - The frontend **never** stores or uses a Stellar secret key. There is no
@@ -298,7 +317,7 @@ the old contract and circuit remain deployed alongside the address-bound path.
 The address-bound path removes the recipient-id indirection. The circuit exposes
 `recipientType`, `recipientHi`, and `recipientLo` as public signals, where type is
 `0 = account` and `1 = contract`, and the 32 identity bytes are split big-endian into
-two 128-bit limbs. The committed allowlist leaf is `Poseidon(type, hi, lo)`, computed
+two 128-bit limbs. The committed approved-recipient leaf is `Poseidon(type, hi, lo)`, computed
 inside the BLS12-381 circuit. The Soroban contract computes no Poseidon; after the
 Groth16 proof verifies, it extracts the caller-supplied `Address` payload with the SDK,
 maps it to the same type code, performs plain equality against the verified public
@@ -315,10 +334,10 @@ list is `init`, `set_vk`, `set_oracle`, `fund`, `settle`, `settle_with_price`,
 
 ## Limitations
 
-- This is **testnet**, with a demo-sized mandate and demo proving artifacts (the trusted
+- This is **testnet**, with demo-sized delegation terms and demo proving artifacts (the trusted
   setup here is a demo ceremony, not a production MPC).
 - Recipient identity is now bound as `(type, key bytes)` in the proof and committed
-  allowlist. The contract enforces exact type-and-byte equality and computes no Poseidon.
+  approved-recipient data. The contract enforces exact type-and-byte equality and computes no Poseidon.
 - The live-oracle path reads the **real Reflector** SEP-40 feed on-chain; the alternate
   `settle_with_price` path uses an admin-signed price and is what the deterministic UI demo
   uses. A live price moves between rounds, so the oracle-priced demo settles from a
