@@ -8,7 +8,9 @@
     "demo:setup": "node app/scripts/sdk/setup_demo.mjs",
     "demo:reprovision": "node app/scripts/sdk/setup_demo.mjs app/frontend/public/demo-config.json .keys.json",
     "demo:reflector": "node app/scripts/sdk/drive_reflector.mjs",
+    "audit:frontend": "node app/scripts/audit_frontend.mjs",
     "audit:secrets": "node app/scripts/audit_secrets.mjs",
+    "audit:all": "bash app/scripts/audit_all.sh",
     "test": "node app/scripts/audit_secrets.mjs"
   },
   "keywords": [],

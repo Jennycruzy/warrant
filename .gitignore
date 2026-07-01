@@ -4,11 +4,11 @@ CircomStellar/
 
 # Node
 node_modules/
-package-lock.json
 
 # Rust build output
 target/
 **/target/
+**/test_snapshots/
 
 # Circuit / proving build artifacts (regenerable)
 app/build/
