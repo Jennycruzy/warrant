@@ -38,7 +38,7 @@ export function publicSignalsToHex(publicSignals) {
   ).toLowerCase();
 }
 
-export function cleanHex(value) {
+function cleanHex(value) {
   return String(value || "").trim().toLowerCase().replace(/^0x/, "").replace(/\s+/g, "");
 }
 
@@ -48,11 +48,4 @@ export function hexToBytes(hex) {
   const out = new Uint8Array(clean.length / 2);
   for (let i = 0; i < clean.length; i += 2) out[i / 2] = parseInt(clean.slice(i, i + 2), 16);
   return out;
-}
-
-export function flipLastByte(hex) {
-  const clean = cleanHex(hex);
-  const head = clean.slice(0, -2);
-  const tail = clean.slice(-2) || "00";
-  return head + ((parseInt(tail, 16) ^ 1).toString(16).padStart(2, "0"));
 }

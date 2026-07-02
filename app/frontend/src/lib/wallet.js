@@ -5,7 +5,6 @@ import {
   requestAccess,
   getAddress,
   getNetwork,
-  getNetworkDetails,
   signTransaction,
 } from "@stellar/freighter-api";
 
@@ -42,13 +41,6 @@ export async function connectWallet() {
 export async function getWalletPublicKey() {
   const res = await getAddress();
   return unwrap(res, "address");
-}
-
-// Returns { network, networkPassphrase } as reported by the wallet.
-export async function getWalletNetwork() {
-  const details = await getNetworkDetails();
-  const d = unwrap(details);
-  return { network: d.network, networkPassphrase: d.networkPassphrase };
 }
 
 export async function isWalletOnTestnet() {

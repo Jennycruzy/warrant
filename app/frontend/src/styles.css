@@ -333,6 +333,14 @@ select:focus, input[type="number"]:focus {
   box-shadow: 0 0 0 3px rgba(53, 224, 142, 0.16);
   outline: none;
 }
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239aa7ad' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
 select option { background: var(--panel-solid); color: var(--ink); }
 
 .amountrow { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 12px; align-items: center; }
@@ -395,9 +403,13 @@ button {
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease, box-shadow 0.2s ease;
 }
-button:hover:not(:disabled) { border-color: var(--line-strong); background: rgba(30, 40, 50, 0.95); transform: translateY(-1px); }
+button:hover:not(:disabled) { border-color: rgba(120, 148, 140, 0.5); background: rgba(30, 40, 50, 0.95); transform: translateY(-1px); }
 button:active:not(:disabled) { transform: translateY(0); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input[type="range"]:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 
 .connect {
   color: #04120b;
@@ -478,8 +490,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   border-radius: 14px;
   background: var(--panel);
   padding: 22px;
-  margin: 16px 28px 0;
-  max-width: 1124px;
+  margin: 16px auto 0;
+  max-width: 1124px; /* 1180px minus the 28px side padding of sibling sections */
+  width: calc(100% - 56px);
 }
 pre {
   max-height: 340px;
@@ -549,7 +562,8 @@ footer code {
   .runmeta { grid-template-columns: 1fr; }
   .feedrow { grid-template-columns: auto 1fr; }
   .feedrow .pill, .feedrow a { justify-self: start; }
-  .observer, .feed, footer { padding: 20px 18px; margin-left: 18px; margin-right: 18px; }
+  .feed, footer { padding: 20px 18px; }
+  .observer { padding: 18px; width: calc(100% - 36px); }
 }
 @media (max-width: 560px) {
   .balances { grid-template-columns: 1fr; }
@@ -558,5 +572,9 @@ footer code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  html { scroll-behavior: auto; }
 }

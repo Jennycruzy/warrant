@@ -23,6 +23,12 @@ import {
 
 const explorer = "https://stellar.expert/explorer/testnet/tx/";
 
+let feedSeq = 0;
+
+// Thrown when a scenario input file fails to load, so catch blocks that expect
+// "proving failed = compliance block" don't misreport a plain fetch failure.
+class ScenarioLoadError extends Error {}
+
 const scenarios = {
   valid: "/valid.input.json",
   overLimit: "/over_limit.input.json",
@@ -85,6 +91,7 @@ export default function App() {
 
   const [wallet, setWallet] = useState(null); // connected public key
   const [onTestnet, setOnTestnet] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   const [amount, setAmount] = useState(50);
   const [recipient, setRecipient] = useState("0");
@@ -226,7 +233,7 @@ export default function App() {
   }, [addressBound, amount, controlStateByPosition, controls?.states?.length, liveControlState, maxPerTx, maxPosition, recipient, selectedRecipient]);
 
   function appendFeed(row) {
-    setFeed((rows) => [{ id: Date.now(), ts: new Date().toLocaleTimeString(), ...row }, ...rows].slice(0, 10));
+    setFeed((rows) => [{ id: ++feedSeq, ts: new Date().toLocaleTimeString(), ...row }, ...rows].slice(0, 10));
   }
 
   async function onConnect() {
@@ -243,6 +250,17 @@ export default function App() {
     }
   }
 
+  async function onCopyAddress() {
+    if (!wallet || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(wallet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access denied; the full address is still visible via the title.
+    }
+  }
+
   function onDisconnect() {
     disconnectWallet();
     setWallet(null);
@@ -251,7 +269,7 @@ export default function App() {
   }
 
   // The connected wallet signs the XDR. This is the only signing path.
-  const signXdr = (xdr, passphrase) => signTransactionXdr(xdr, passphrase);
+  const signXdr = signTransactionXdr;
 
   async function requireWallet() {
     if (!config?.contractId || !config?.token) {
@@ -284,7 +302,7 @@ export default function App() {
         contractId: config.contractId, amount: rawAmount,
       });
       setStatus("idle");
-      appendFeed({ kind: "settled", text: `Funded custody with ${fundAmount} ${symbol} (raw)`, hash: sent.hash });
+      appendFeed({ kind: "settled", text: `Funded custody with ${rawAmount} raw ${symbol}`, hash: sent.hash });
       setMessage("Funded on-chain. Custody balance increased.");
       await refreshBalances();
     } catch (err) {
@@ -297,7 +315,9 @@ export default function App() {
 
   async function proveScenario(name) {
     setStatus("witness");
-    const input = await fetch(scenarios[name]).then((r) => r.json());
+    const res = await fetch(scenarios[name]);
+    if (!res.ok) throw new ScenarioLoadError(`Could not load the ${name} scenario input (HTTP ${res.status}).`);
+    const input = await res.json();
     setStatus("proving");
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
       input,
@@ -451,7 +471,7 @@ export default function App() {
       setChain(await readContractState({ rpcUrl, contractId: config.contractId }));
       await refreshBalances();
     } catch (err) {
-      const neverReached = selectedScenario !== "valid";
+      const neverReached = selectedScenario !== "valid" && !(err instanceof ScenarioLoadError);
       setStatus(neverReached ? "blocked" : "rejected");
       appendFeed({
         kind: neverReached ? "blocked" : "rejected",
@@ -469,7 +489,7 @@ export default function App() {
     return false;
   }
 
-  async function submitAdversarial({ kind, proofHex, publicHex, expected, describe, recipientAddress = lastProof?.recipientAddress, footprintOverride, skipWalletCheck = false, manageBusy = true }) {
+  async function submitAdversarial({ kind, proofHex: attemptProofHex, publicHex: attemptPublicHex, expected, describe, recipientAddress = lastProof?.recipientAddress, footprintOverride, skipWalletCheck = false, manageBusy = true }) {
     if (!skipWalletCheck && !(await requireWallet())) return;
     const borrowedFootprint = footprintOverride || footprint;
     if (manageBusy) setBusy(true);
@@ -478,7 +498,7 @@ export default function App() {
     try {
       const res = await settleWithFootprint({
         rpcUrl, networkPassphrase: network, sourcePublicKey: wallet, signXdr,
-        contractId: config.contractId, proofHex, publicHex,
+        contractId: config.contractId, proofHex: attemptProofHex, publicHex: attemptPublicHex,
         recipientAddress: addressBound ? recipientAddress : undefined,
         price: config.price, timestamp: config.timestamp, signatureHex: config.signatureHex, footprint: borrowedFootprint,
       });
@@ -586,10 +606,15 @@ export default function App() {
     try {
       await proveScenario("breach");
       throw new Error("lower valuation unexpectedly produced a proof");
-    } catch {
-      setStatus("blocked");
-      appendFeed({ kind: "blocked", text: "Lower authenticated valuation made the same payment unprovable" });
-      setMessage("Lower valuation: price 8 derives value 800, permitted decline 200 exceeds private limit 100. Never reached chain.");
+    } catch (err) {
+      if (err instanceof ScenarioLoadError) {
+        setStatus("rejected");
+        setMessage(err.message);
+      } else {
+        setStatus("blocked");
+        appendFeed({ kind: "blocked", text: "Lower authenticated valuation made the same payment unprovable" });
+        setMessage("Lower valuation: price 8 derives value 800, permitted decline 200 exceeds private limit 100. Never reached chain.");
+      }
     } finally {
       setBusy(false);
     }
@@ -607,7 +632,9 @@ export default function App() {
           <span className={`netbadge ${onTestnet ? "" : "warn"}`}>{onTestnet ? "Stellar Testnet" : "Wrong network"}</span>
           {wallet ? (
             <>
-              <button className="addr" title={wallet} onClick={() => navigator.clipboard?.writeText(wallet)}>{short(wallet, 6)}</button>
+              <button className="addr" title={`${wallet} — click to copy`} onClick={onCopyAddress}>
+                {copied ? "Copied" : short(wallet, 6)}
+              </button>
               <button className="toggle" onClick={onDisconnect}>Disconnect</button>
             </>
           ) : (
